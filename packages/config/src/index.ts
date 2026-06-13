@@ -12,8 +12,12 @@ export interface ModelConfig {
     recencyLambda: number;
     /** Half-life in days implied by recencyLambda (documentation only). */
     recencyHalfLifeDays: number;
-    /** Band half-width = bandK × MAD × widthFactor(compCount, liquidity). */
+    /** MAD → σ scaling for a normal core (band reflects sale dispersion). */
     bandK: number;
+    /** z-score for the band's nominal coverage (1.2816 ≈ 80%). */
+    bandZ: number;
+    /** The coverage `bandZ` targets — reported by the calibration harness. */
+    bandNominalCoverage: number;
     /** Min clean comps before we trust the data over the structural prior. */
     minCompsForTrust: number;
   };
@@ -59,6 +63,8 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
     recencyLambda: 0.0116, // ~60-day half-life: ln(2)/60
     recencyHalfLifeDays: 60,
     bandK: 1.4826, // MAD → σ-equivalent scaling for a normal core
+    bandZ: 1.2816, // ≈ 80% central coverage
+    bandNominalCoverage: 0.8,
     minCompsForTrust: 8,
   },
   shrinkage: {

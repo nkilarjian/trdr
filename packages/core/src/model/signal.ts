@@ -7,12 +7,20 @@
 import { DEFAULT_MODEL_CONFIG, type ModelConfig } from "@trdr/config";
 import type { ActiveListing, Alert, CanonicalCardKey, FairValue, SellerRiskChip } from "../types.js";
 
-/** Predicted closing price for a live auction; BIN price is actionable as-is. */
-export function forecastClose(listing: ActiveListing, config: ModelConfig = DEFAULT_MODEL_CONFIG): number {
+/**
+ * Predicted closing price for a live auction; BIN price is actionable as-is.
+ * `nowMs` is the decision clock — defaults to Date.now() live, but the backtest
+ * harness passes the historical decision time so replays are deterministic.
+ */
+export function forecastClose(
+  listing: ActiveListing,
+  config: ModelConfig = DEFAULT_MODEL_CONFIG,
+  nowMs: number = Date.now(),
+): number {
   if (listing.buyingOption === "BIN") return listing.currentPrice;
 
   const hoursLeft = listing.endTime
-    ? Math.max(0, (Date.parse(listing.endTime) - referenceNow(listing)) / 3_600_000)
+    ? Math.max(0, (Date.parse(listing.endTime) - nowMs) / 3_600_000)
     : 24;
   const tier = config.closeForecast.timeTierMultiplier;
   const base =
@@ -20,11 +28,6 @@ export function forecastClose(listing: ActiveListing, config: ModelConfig = DEFA
 
   const bidLift = 1 + (listing.bidCount ?? 0) * config.closeForecast.perBidLift;
   return listing.currentPrice * base * bidLift;
-}
-
-// Kept as a seam so tests can inject a clock; defaults to Date.now().
-function referenceNow(_listing: ActiveListing): number {
-  return Date.now();
 }
 
 export interface SignalDecision {
@@ -39,8 +42,9 @@ export function evaluateSignal(
   listing: ActiveListing,
   fairValue: FairValue,
   config: ModelConfig = DEFAULT_MODEL_CONFIG,
+  nowMs: number = Date.now(),
 ): SignalDecision {
-  const predictedClose = forecastClose(listing, config);
+  const predictedClose = forecastClose(listing, config, nowMs);
   const costs = predictedClose * config.signal.transactionCostPct;
   const margin = fairValue.point * config.signal.marginPct;
   const expectedEdge = fairValue.lower - predictedClose - costs - margin;
@@ -61,12 +65,13 @@ export interface BuildAlertInput {
   sellerRisk: SellerRiskChip;
   epnCampaignId?: string;
   config?: ModelConfig;
+  nowMs?: number;
 }
 
 /** Build an Alert if the gate fires, else null (suppressed). */
 export function buildAlert(input: BuildAlertInput): Alert | null {
   const config = input.config ?? DEFAULT_MODEL_CONFIG;
-  const decision = evaluateSignal(input.listing, input.fairValue, config);
+  const decision = evaluateSignal(input.listing, input.fairValue, config, input.nowMs ?? Date.now());
   if (!decision.fire) return null;
 
   return {

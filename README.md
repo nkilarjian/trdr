@@ -45,10 +45,16 @@ The whole app builds, runs, and tests end-to-end on fixtures with **zero credent
 
 ```bash
 pnpm install
-pnpm e2e         # runnable Phase-0 pipeline on mocks: resolve → fair value → alerts
-pnpm test        # unit + contract tests (model, identity, providers)
+pnpm e2e         # runnable pipeline on mocks: resolve → fair value → alerts
+pnpm backtest    # §9 calibration/backtest harness — band coverage + gate sweep report
+pnpm test        # unit + contract tests (model, identity, providers, harness)
 pnpm typecheck   # strict TS across the workspace
 ```
+
+`pnpm backtest` walks synthetic ground-truth data forward and reports band
+calibration (does the 80% band contain ~80% of realized sales?) and a confidence-gate
+sweep (precision vs recall vs realized edge). It is the model's credibility loop and
+**won't certify a gate that misses the precision target** — by design.
 
 No `.env` needed — `TRDR_PROVIDERS=mock` (default) runs everything on fixtures.
 

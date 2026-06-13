@@ -7,6 +7,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "e2e": "tsx scripts/e2e.ts",
+    "backtest": "tsx scripts/backtest.ts",
     "build": "turbo run build",
     "test": "turbo run test"
   },

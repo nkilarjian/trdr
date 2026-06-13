@@ -61,12 +61,14 @@ export function computeFairValue(input: FairValueInput): FairValue {
     shrunk = w < 0.95;
   }
 
-  // Band: half-width grows with dispersion and shrinks with comp count & liquidity.
-  const compFactor = Math.sqrt(config.estimator.minCompsForTrust / n); // <1 when comps are plentiful
-  const liqFactor = 1 / (1 + est.liquidity); // more liquid ⇒ tighter
+  // Band reflects the DISPERSION of individual sales (a coverage interval), not
+  // the standard error of the central estimate — so it must NOT shrink with n.
+  // Estimate reliability (which does tighten with n & liquidity) lives in
+  // `confidence`, not here. half ≈ z · σ, with σ = bandK · MAD.
+  const sigma = config.estimator.bandK * est.dispersion;
   const half = Math.max(
-    config.estimator.bandK * est.dispersion * compFactor,
-    point * 0.04 * liqFactor, // floor so a band is never absurdly tight
+    config.estimator.bandZ * sigma,
+    point * 0.03, // floor so a band is never absurdly tight on near-zero MAD
   );
 
   const confidence = computeConfidence(n, est.dispersion, point, est.liquidity, config, input.resolutionConfidence);
