@@ -1,0 +1,22 @@
+{
+  "name": "trdr",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "description": "TRDR — graded trading-card portfolio & mispricing-signal app (monorepo)",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "e2e": "tsx scripts/e2e.ts",
+    "build": "turbo run build",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

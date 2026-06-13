@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@trdr/core": ["packages/core/src/index.ts"],
+      "@trdr/config": ["packages/config/src/index.ts"],
+      "@trdr/ui": ["packages/ui/src/index.ts"],
+      "@trdr/market-data": ["packages/providers/market-data/src/index.ts"],
+      "@trdr/grading": ["packages/providers/grading/src/index.ts"],
+      "@trdr/identity": ["packages/providers/identity/src/index.ts"],
+      "@trdr/ingestion": ["services/ingestion/src/index.ts"]
+    }
+  },
+  "include": ["scripts", "packages", "services/api/src", "services/ingestion/src"]
+}

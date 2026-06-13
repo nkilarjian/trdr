@@ -1,0 +1,20 @@
+# Local dev datastores. Services run on the host against these.
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: trdr
+      POSTGRES_PASSWORD: trdr
+      POSTGRES_DB: trdr
+    ports:
+      - "5432:5432"
+    volumes:
+      - trdr_pg:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  trdr_pg:

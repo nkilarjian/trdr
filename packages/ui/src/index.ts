@@ -1,0 +1,51 @@
+// Shared, framework-agnostic view-models. The RN component library (mobile +
+// desktop + web) renders these; keeping the logic here means every client and
+// the tests format identically. Actual <View>/<Text> components land in Phase 1
+// once the Expo app target is wired.
+
+import type { Alert, FairValue } from "@trdr/core";
+
+export interface BandVM {
+  point: string;
+  range: string;
+  confidence: string;
+  confidenceTone: "high" | "medium" | "low";
+}
+
+export function fairValueVM(fv: FairValue): BandVM {
+  return {
+    point: usd(fv.point),
+    range: `${usd(fv.lower)} – ${usd(fv.upper)}`,
+    confidence: pct(fv.confidence),
+    confidenceTone: fv.confidence >= 0.8 ? "high" : fv.confidence >= 0.6 ? "medium" : "low",
+  };
+}
+
+export interface AlertVM {
+  title: string;
+  band: BandVM;
+  predictedClose: string;
+  edge: string;
+  sellerChip: string;
+  sellerTone: "ok" | "caution" | "risk";
+  deepLink: string;
+}
+
+export function alertVM(a: Alert): AlertVM {
+  return {
+    title: `${a.key.set} #${a.key.number}${a.key.variant ? " " + a.key.variant : ""} ${a.key.grader} ${a.key.grade}`,
+    band: fairValueVM(a.fairValue),
+    predictedClose: usd(a.predictedClose),
+    edge: `+${usd(a.expectedEdge)}`,
+    sellerChip: a.sellerRisk.label,
+    sellerTone: a.sellerRisk.manipulationRisk > 0.4 ? "risk" : a.sellerRisk.manipulationRisk > 0.2 ? "caution" : "ok",
+    deepLink: a.deepLink,
+  };
+}
+
+function usd(x: number): string {
+  return `$${Math.round(x).toLocaleString("en-US")}`;
+}
+function pct(x: number): string {
+  return `${Math.round(x * 100)}%`;
+}

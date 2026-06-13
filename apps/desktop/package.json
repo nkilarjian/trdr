@@ -1,0 +1,9 @@
+{
+  "name": "@trdr/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tauri desktop shell wrapping the RN-Web build. Phase 1.",
+  "scripts": {
+    "placeholder": "echo \"@trdr/desktop — Tauri shell, Phase 1\""
+  }
+}

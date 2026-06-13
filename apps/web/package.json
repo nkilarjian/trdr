@@ -1,0 +1,9 @@
+{
+  "name": "@trdr/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Expo RN-Web → PWA build. Phase 1.",
+  "scripts": {
+    "placeholder": "echo \"@trdr/web — RN-Web PWA, Phase 1\""
+  }
+}

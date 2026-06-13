@@ -1,0 +1,28 @@
+# deps / build
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# python
+services/model/.venv/
+services/model/__pycache__/
+**/__pycache__/
+*.pyc
+
+# expo / native
+apps/**/.expo/
+apps/**/web-build/
+
+# tauri
+apps/desktop/src-tauri/target/
+
+# OS / OneDrive junk (see FundPulse lessons)
+~$*
+.DS_Store
+Thumbs.db
