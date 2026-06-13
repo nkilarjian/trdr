@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "e2e": "tsx scripts/e2e.ts",
     "backtest": "tsx scripts/backtest.ts",
+    "preview": "tsx scripts/build-preview.ts",
     "build": "turbo run build",
     "test": "turbo run test"
   },

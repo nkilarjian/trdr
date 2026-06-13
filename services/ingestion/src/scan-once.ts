@@ -9,6 +9,13 @@ const watched = [
   },
 ];
 
-const alerts = await scanOnce(selectProviders(), watched, Date.parse("2026-06-13T12:00:00Z"));
-console.log(`${alerts.length} alert(s):`);
-for (const a of alerts) console.log(`  ${a.itemId}  edge $${a.expectedEdge.toFixed(0)}  ${a.deepLink}`);
+async function main() {
+  const alerts = await scanOnce(selectProviders(), watched, Date.parse("2026-06-13T12:00:00Z"));
+  console.log(`${alerts.length} alert(s):`);
+  for (const a of alerts) console.log(`  ${a.itemId}  edge $${a.expectedEdge.toFixed(0)}  ${a.deepLink}`);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

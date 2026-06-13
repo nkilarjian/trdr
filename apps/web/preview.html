@@ -1,0 +1,130 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>TRDR preview</title><style>body{margin:0;background:#05070b;}</style></head><body>
+  <style>
+    .trdr { --bg:#0b0e14; --panel:#141925; --panel2:#1b2230; --ink:#e6edf3; --muted:#8b97a8; --line:#232c3b;
+      --green:#3fb950; --amber:#d29922; --red:#f85149; --accent:#58a6ff;
+      font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--ink);
+      background:var(--bg); padding:22px; border-radius:14px; }
+    .trdr * { box-sizing:border-box; }
+    .hdr { display:flex; align-items:baseline; gap:12px; margin-bottom:18px; }
+    .hdr h1 { font-size:20px; letter-spacing:2px; margin:0; font-weight:800; }
+    .hdr .sub { color:var(--muted); font-size:12px; }
+    .hdr .mode { margin-left:auto; font-size:11px; color:var(--muted); border:1px solid var(--line); padding:3px 8px; border-radius:20px; }
+    .grid { display:grid; grid-template-columns: 1.15fr 1fr; gap:16px; }
+    @media (max-width:780px){ .grid{ grid-template-columns:1fr; } }
+    .col-h { font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin:0 0 10px; }
+
+    .alert { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+    .alert-top { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+    .alert-title { font-weight:600; font-size:13px; }
+    .edge { margin-left:auto; color:var(--green); font-weight:800; font-size:14px; }
+    .badge { font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; letter-spacing:.5px; }
+    .badge-auction { background:rgba(88,166,255,.15); color:var(--accent); }
+    .badge-bin { background:rgba(63,185,80,.15); color:var(--green); }
+    .alert-row { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+    .alert-row .lbl { display:block; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+    .alert-row b { font-size:14px; }
+    .cta { display:inline-block; margin-top:11px; font-size:12px; color:var(--accent); text-decoration:none; }
+    .chip { font-size:11px; padding:3px 9px; border-radius:20px; border:1px solid var(--line); }
+    .chip-ok { color:var(--green); border-color:rgba(63,185,80,.4); }
+    .chip-caution { color:var(--amber); border-color:rgba(210,153,34,.4); }
+    .chip-risk { color:var(--red); border-color:rgba(248,81,73,.4); }
+    .tone-high{color:var(--green);} .tone-medium{color:var(--amber);} .tone-low{color:var(--red);}
+
+    .passport { background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line);
+      border-radius:12px; padding:18px; position:relative; overflow:hidden; }
+    .passport::before { content:"GRADED PASSPORT"; position:absolute; top:12px; right:-28px; transform:rotate(35deg);
+      background:var(--accent); color:#04122b; font-size:9px; font-weight:800; letter-spacing:1px; padding:3px 34px; }
+    .pp-grade { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+    .pp-grade .g { background:#04122b; color:var(--accent); border:1px solid rgba(88,166,255,.5); font-weight:800;
+      font-size:13px; padding:3px 9px; border-radius:6px; }
+    .pp-name { font-size:15px; font-weight:700; margin:2px 0 1px; }
+    .pp-cert { font-size:11px; color:var(--muted); margin-bottom:16px; }
+    .pp-point { font-size:34px; font-weight:800; letter-spacing:-1px; }
+    .pp-point small { font-size:12px; color:var(--muted); font-weight:500; letter-spacing:0; }
+    .band { position:relative; height:8px; background:var(--panel); border:1px solid var(--line); border-radius:6px; margin:14px 0 6px; }
+    .band .fill { position:absolute; inset:0; background:linear-gradient(90deg,rgba(88,166,255,.15),rgba(63,185,80,.25)); border-radius:6px; }
+    .band .pt { position:absolute; top:-4px; width:3px; height:16px; background:var(--ink); border-radius:2px; }
+    .band-lbls { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); }
+    .meter { height:6px; background:var(--panel); border:1px solid var(--line); border-radius:6px; margin:6px 0 2px; overflow:hidden; }
+    .meter .m { height:100%; }
+    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:16px 0; }
+    .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 10px; }
+    .stat .v { font-size:16px; font-weight:700; } .stat .l { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th { text-align:left; color:var(--muted); font-weight:500; font-size:10px; text-transform:uppercase; letter-spacing:.5px; padding:4px 0; }
+    td { padding:5px 0; border-top:1px solid var(--line); } td.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .saletype { font-size:10px; color:var(--muted); }
+    .foot { margin-top:14px; font-size:11px; color:var(--muted); line-height:1.5; }
+  </style>
+
+  <div class="trdr">
+    <div class="hdr">
+      <h1>TRDR</h1>
+      <span class="sub">graded-card mispricing terminal</span>
+      <span class="mode">providers: mock · live pipeline output</span>
+    </div>
+
+    <div class="grid">
+      <div>
+        <p class="col-h">Underpriced alerts · 2</p>
+        
+      <div class="alert">
+        <div class="alert-top">
+          <span class="badge badge-auction">AUCTION</span>
+          <span class="alert-title">2018 Panini Prizm Basketball #280 Silver PSA 10</span>
+          <span class="edge">+$62 edge</span>
+        </div>
+        <div class="alert-row">
+          <div><span class="lbl">predicted close</span><b>$178</b></div>
+          <div><span class="lbl">fair band</span><b>$290 – $309</b></div>
+          <div><span class="lbl">confidence</span><b class="tone-medium">73%</b></div>
+          <div><span class="chip chip-ok">no notable signals</span></div>
+        </div>
+        <a class="cta" href="https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&amp;campid=DEMO-EPN" target="_blank" rel="noreferrer">Open on eBay →</a>
+      </div>
+      <div class="alert">
+        <div class="alert-top">
+          <span class="badge badge-bin">BIN</span>
+          <span class="alert-title">2018 Panini Prizm Basketball #280 Silver PSA 10</span>
+          <span class="edge">+$19 edge</span>
+        </div>
+        <div class="alert-row">
+          <div><span class="lbl">predicted close</span><b>$215</b></div>
+          <div><span class="lbl">fair band</span><b>$290 – $309</b></div>
+          <div><span class="lbl">confidence</span><b class="tone-medium">73%</b></div>
+          <div><span class="chip chip-ok">no notable signals</span></div>
+        </div>
+        <a class="cta" href="https://www.ebay.com/itm/v-underpriced-bin?mkcid=1&amp;campid=DEMO-EPN" target="_blank" rel="noreferrer">Open on eBay →</a>
+      </div>
+      </div>
+
+      <div>
+        <p class="col-h">Card passport</p>
+        <div class="passport">
+          <div class="pp-grade"><span class="g">PSA 10</span><span class="pp-cert">cert 58127634</span></div>
+          <div class="pp-name">2018 Panini Prizm Basketball #280 Silver</div>
+          <div class="pp-point">$300 <small>fair value</small></div>
+
+          <div class="band"><div class="fill"></div><div class="pt" style="left:50.0%"></div></div>
+          <div class="band-lbls"><span>$290</span><span>80% band</span><span>$309</span></div>
+
+          <div class="meter"><div class="m tone-medium" style="width:73%;background:currentColor"></div></div>
+          <div class="band-lbls"><span>confidence</span><span class="tone-medium">73%</span></div>
+
+          <div class="stats">
+            <div class="stat"><div class="v">21</div><div class="l">clean comps</div></div>
+            <div class="stat"><div class="v">0.40<small>/day</small></div><div class="l">liquidity</div></div>
+            <div class="stat"><div class="v">412</div><div class="l">pop @ grade</div></div>
+          </div>
+
+          <table>
+            <thead><tr><th>recent sale</th><th class="num">price</th><th>type</th></tr></thead>
+            <tbody><tr><td>2026-06-12</td><td class="num">$302</td><td><span class="saletype">auction-close</span></td></tr><tr><td>2026-06-11</td><td class="num">$301</td><td><span class="saletype">auction-close</span></td></tr><tr><td>2026-06-10</td><td class="num">$305</td><td><span class="saletype">auction-close</span></td></tr><tr><td>2026-06-09</td><td class="num">$297</td><td><span class="saletype">auction-close</span></td></tr><tr><td>2026-06-08</td><td class="num">$296</td><td><span class="saletype">auction-close</span></td></tr><tr><td>2026-06-07</td><td class="num">$298</td><td><span class="saletype">auction-close</span></td></tr></tbody>
+          </table>
+
+          <div class="foot">Distribution, not a number. Band reflects sale dispersion; confidence reflects comp depth,
+          tightness &amp; liquidity. Qualified copies (OC/MK) are segregated; lots, shill wins &amp; relists dropped before estimating.</div>
+        </div>
+      </div>
+    </div>
+  </div></body></html>
