@@ -1,6 +1,10 @@
 import { Children, createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { Image, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
+
+type IconName = keyof typeof Ionicons.glyphMap;
 import { alertVM, fairValueVM } from "./src/trdr-ui";
 import { buildWishTree, parseWish, type WishNode, type WishSpec } from "./src/trdr-wishlist";
 import type { Alert } from "@trdr/core";
@@ -157,11 +161,11 @@ export default function App() {
   const maxWidth = kind === "wide" ? 1080 : kind === "tablet" ? 760 : undefined;
   const deviceLabel = Platform.OS === "web" ? "web" : kind === "tablet" ? "tablet" : "phone";
 
-  const tabs: { key: typeof tab; label: string }[] = [
-    { key: "alerts", label: `Deals · ${feed.alerts.length}` },
-    { key: "library", label: `Library · ${holdings.length}` },
-    { key: "wishlist", label: `Wishlist · ${hits.length}` },
-    { key: "passport", label: "Card" },
+  const tabs: { key: typeof tab; label: string; icon: IconName }[] = [
+    { key: "alerts", label: `Deals · ${feed.alerts.length}`, icon: "pricetags-outline" },
+    { key: "library", label: `Library · ${holdings.length}`, icon: "albums-outline" },
+    { key: "wishlist", label: `Wishlist · ${hits.length}`, icon: "heart-outline" },
+    { key: "passport", label: "Card", icon: "card-outline" },
   ];
 
   const body = (
@@ -199,13 +203,15 @@ export default function App() {
   );
 
   const shell = (inner: ReactNode) => (
-    <ScaleCtx.Provider value={textScale}>
-      <SafeAreaView style={styles.safe}>
-        <StatusBar style="light" />
-        {header}
-        {inner}
-      </SafeAreaView>
-    </ScaleCtx.Provider>
+    <SafeAreaProvider>
+      <ScaleCtx.Provider value={textScale}>
+        <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+          <StatusBar style="light" />
+          {header}
+          {inner}
+        </SafeAreaView>
+      </ScaleCtx.Provider>
+    </SafeAreaProvider>
   );
 
   // Wide screens (iPad landscape / desktop): a left sidebar nav + centered content.
@@ -215,6 +221,7 @@ export default function App() {
         <View style={styles.sidebar}>
           {tabs.map((t) => (
             <Pressable key={t.key} style={[styles.sideTab, tab === t.key && styles.sideTabActive]} onPress={() => setTab(t.key)}>
+              <Ionicons name={t.icon} size={18} color={tab === t.key ? C.ink : C.muted} />
               <Text style={[styles.sideTabText, tab === t.key && styles.sideTabTextActive]}>{t.label}</Text>
             </Pressable>
           ))}
@@ -226,17 +233,20 @@ export default function App() {
     );
   }
 
-  // Phone / tablet: top tabs + content.
+  // Phone / tablet: content with a bottom tab bar (thumb reach, iOS pattern).
   return shell(
     <>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-        {tabs.map((t) => (
-          <TabButton key={t.key} label={t.label} active={tab === t.key} onPress={() => setTab(t.key)} />
-        ))}
-      </ScrollView>
-      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 8 }}>
+      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 12 }}>
         {body}
       </ScrollView>
+      <View style={styles.bottomBar}>
+        {tabs.map((t) => (
+          <Pressable key={t.key} style={styles.bottomTab} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }}>
+            <Ionicons name={t.icon} size={23} color={tab === t.key ? C.accent : C.muted} />
+            <Text style={[styles.bottomTabText, { color: tab === t.key ? C.accent : C.muted }]}>{t.label.split(" · ")[0]}</Text>
+          </Pressable>
+        ))}
+      </View>
     </>,
   );
 }
@@ -793,10 +803,13 @@ const styles = StyleSheet.create({
 
   tabsScroll: { flexGrow: 0 },
   sidebar: { width: 200, paddingHorizontal: 12, paddingTop: 6, gap: 6, borderRightWidth: 1, borderRightColor: C.line },
-  sideTab: { paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10 },
+  sideTab: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10 },
   sideTabActive: { backgroundColor: C.panel2 },
   sideTabText: { color: C.muted, fontSize: 15, fontWeight: "600" },
   sideTabTextActive: { color: C.ink },
+  bottomBar: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.bg, paddingTop: 8 },
+  bottomTab: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
+  bottomTabText: { fontSize: 11, fontWeight: "600" },
   ppHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
 
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
