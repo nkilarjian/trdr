@@ -4,6 +4,7 @@
 
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import { DefaultIdentityResolver } from "@trdr/identity";
 import {
   buildFeed,
@@ -42,6 +43,11 @@ const library = new LibraryStore(DEMO_LIBRARY);
 const watchlist = new WatchlistStore(watchlistPath());
 
 const app = Fastify({ logger: true });
+
+// Allow the web app (a different origin when hosted, or :8081 in dev) to call us.
+// CORS_ORIGIN can restrict it; default reflects any origin. (register loads
+// before listen, so no top-level await needed.)
+app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });
 
 app.get("/health", async () => ({ ok: true, providers: process.env.TRDR_PROVIDERS ?? "mock" }));
 

@@ -1,0 +1,54 @@
+# Render Blueprint. New + → "Blueprint" → pick this repo → it creates both:
+#   • trdr-web  — the installable web app / PWA (static)
+#   • trdr-api  — the Fastify API (runs on mocks until you add eBay/Anthropic keys)
+services:
+  # ── installable web app (PWA) ──────────────────────────────────
+  - type: web
+    name: trdr-web
+    runtime: static
+    rootDir: apps/mobile
+    buildCommand: npm ci && npx expo export -p web
+    staticPublishPath: ./dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Point the web app at the live API for real data. Leave unset = demo data.
+      # After first deploy, set this to the trdr-api URL, e.g. https://trdr-api.onrender.com
+      - key: EXPO_PUBLIC_API_BASE
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ── API (model + providers) ────────────────────────────────────
+  - type: web
+    name: trdr-api
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: corepack enable && pnpm install
+    startCommand: pnpm --filter @trdr/api start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # eBay (real listings) — add when your dev account is approved
+      - key: EBAY_CLIENT_ID
+        sync: false
+      - key: EBAY_CLIENT_SECRET
+        sync: false
+      - key: EBAY_MARKETPLACE_ID
+        value: EBAY_US
+      - key: EBAY_EPN_CAMPAIGN_ID
+        sync: false
+      # Vision photo-scan (Claude)
+      - key: VISION_BACKEND
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Where accumulated sold-comps persist on the instance disk
+      - key: SOLD_STORE_PATH
+        value: /tmp/trdr/sold-comps.json
+      - key: WATCHLIST_PATH
+        value: /tmp/trdr/watchlist.json
