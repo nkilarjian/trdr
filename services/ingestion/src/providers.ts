@@ -12,31 +12,28 @@ export interface Providers {
   vision: VisionProvider;
 }
 
+// Each provider goes real as soon as its own credentials are present — so you
+// can run real eBay listings while grading/vision stay mock, etc.
 export function selectProviders(env: NodeJS.ProcessEnv = process.env): Providers {
-  // Vision is chosen independently: a real Claude-vision backend can run even
-  // while market/grading stay on mocks (the grading-cert APIs are gated).
+  const market =
+    env.EBAY_CLIENT_ID && env.EBAY_CLIENT_SECRET
+      ? new RealMarketDataProvider({
+          ebayClientId: env.EBAY_CLIENT_ID,
+          ebayClientSecret: env.EBAY_CLIENT_SECRET,
+          soldPartnerKey: env.EBAY_SOLD_PARTNER_KEY,
+          marketplaceId: env.EBAY_MARKETPLACE_ID,
+        })
+      : new MockMarketDataProvider();
+
+  const grading =
+    env.PSA_API_TOKEN || env.CGC_API_TOKEN || env.SGC_API_TOKEN || env.BGS_API_TOKEN
+      ? new RealGradingProvider({ psaToken: env.PSA_API_TOKEN, cgcToken: env.CGC_API_TOKEN, sgcToken: env.SGC_API_TOKEN, bgsToken: env.BGS_API_TOKEN })
+      : new MockGradingProvider();
+
   const vision =
     env.VISION_BACKEND === "claude" && env.ANTHROPIC_API_KEY
       ? new RealVisionProvider({ backend: "claude", anthropicApiKey: env.ANTHROPIC_API_KEY, model: env.VISION_MODEL })
-      : env.TRDR_PROVIDERS === "real"
-        ? new RealVisionProvider({ backend: env.VISION_BACKEND, endpointUrl: env.VISION_ENDPOINT_URL, apiKey: env.VISION_API_KEY })
-        : new MockVisionProvider();
+      : new MockVisionProvider();
 
-  if (env.TRDR_PROVIDERS === "real") {
-    return {
-      market: new RealMarketDataProvider({
-        ebayClientId: env.EBAY_CLIENT_ID,
-        ebayClientSecret: env.EBAY_CLIENT_SECRET,
-        soldPartnerKey: env.EBAY_SOLD_PARTNER_KEY,
-      }),
-      grading: new RealGradingProvider({
-        psaToken: env.PSA_API_TOKEN,
-        cgcToken: env.CGC_API_TOKEN,
-        sgcToken: env.SGC_API_TOKEN,
-        bgsToken: env.BGS_API_TOKEN,
-      }),
-      vision,
-    };
-  }
-  return { market: new MockMarketDataProvider(), grading: new MockGradingProvider(), vision };
+  return { market, grading, vision };
 }
