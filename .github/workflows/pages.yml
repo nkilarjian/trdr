@@ -1,0 +1,52 @@
+# Auto-deploy the web app to GitHub Pages on every push to master.
+# The base path /trdr (project Pages live under /<repo>/) is injected at build
+# time so the committed app.json stays root-relative for local serve / native / EAS.
+name: Deploy web to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "services/ingestion/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build web (base /trdr)
+        working-directory: apps/mobile
+        run: |
+          npm ci
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.experiments={...(j.expo.experiments||{}),baseUrl:'/trdr'};fs.writeFileSync('app.json',JSON.stringify(j,null,2));"
+          npx expo export -p web
+          touch dist/.nojekyll
+
+      - name: Publish to gh-pages branch
+        working-directory: apps/mobile/dist
+        run: |
+          git init -q
+          git checkout -q -b gh-pages
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git add -A
+          git commit -q -m "Deploy ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
