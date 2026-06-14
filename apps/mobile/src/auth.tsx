@@ -111,13 +111,22 @@ function SignInModal({ visible, onClose }: { visible: boolean; onClose: () => vo
       if (mode === "signin" && signIn) {
         const res = await signIn.attemptFirstFactor({ strategy: "email_code", code });
         if (res.status === "complete") return done(setActiveSignIn, res.createdSessionId);
+        setErr(`Couldn't finish sign-in (${res.status}).`);
       } else if (signUp) {
-        const res = await signUp.attemptEmailAddressVerification({ code });
+        let res = await signUp.attemptEmailAddressVerification({ code });
+        // If the Clerk app requires a password, set a random one so the
+        // passwordless email-code flow still completes (user never sees it).
+        const missing = ((res as { missingFields?: string[] }).missingFields ?? []).concat(
+          (res as { requiredFields?: string[] }).requiredFields ?? [],
+        );
+        if (res.status !== "complete" && missing.includes("password")) {
+          res = await signUp.update({ password: randomPassword() });
+        }
         if (res.status === "complete") return done(setActiveSignUp, res.createdSessionId);
+        setErr(`Almost there — account needs: ${missing.join(", ") || res.status}.`);
       }
-      setErr("That code didn't work.");
     } catch (e) {
-      setErr(clerkErr(e) ?? "Wrong or expired code.");
+      setErr(clerkErr(e) ?? "Wrong or expired code — request a new one.");
     } finally {
       setBusy(false);
     }
@@ -234,6 +243,15 @@ function CloudSyncInner({ specs, holdings, onLoad }: { specs: unknown[]; holding
 function clerkErr(e: unknown): string | undefined {
   const m = (e as { errors?: { message?: string }[] })?.errors?.[0]?.message;
   return m;
+}
+
+// A strong random password, used only when the Clerk instance requires one —
+// keeps the email-code flow passwordless from the user's point of view.
+function randomPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+  let s = "";
+  for (let i = 0; i < 24; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
 }
 
 const a = StyleSheet.create({
