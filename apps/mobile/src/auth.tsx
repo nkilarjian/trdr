@@ -49,14 +49,37 @@ function AuthButtonInner() {
       </Pressable>
     );
   }
+  // On web, use Clerk's polished HOSTED sign-in (password / Google / stays signed
+  // in) — the same experience as a Next.js Clerk app. Fall back to the in-app
+  // modal on native (Expo has no drop-in hosted page) or if the URL can't build.
+  const startSignIn = () => {
+    const url = Platform.OS === "web" ? hostedSignInUrl() : null;
+    if (url) window.location.assign(url);
+    else setOpen(true);
+  };
   return (
     <>
-      <Pressable style={[a.chip, a.chipOn]} onPress={() => setOpen(true)}>
+      <Pressable style={[a.chip, a.chipOn]} onPress={startSignIn}>
         <Text style={[a.chipText, { color: "#04122b" }]}>Sign in</Text>
       </Pressable>
       <SignInModal visible={open} onClose={() => setOpen(false)} />
     </>
   );
+}
+
+// Build the Clerk Account Portal sign-in URL from the publishable key, with a
+// redirect back to wherever the user is now. Dev key encodes the Frontend API
+// host (…clerk.accounts.dev); the hosted portal lives at the …accounts.dev twin.
+function hostedSignInUrl(): string | null {
+  if (!CLERK_KEY || typeof window === "undefined" || typeof atob === "undefined") return null;
+  try {
+    const fapi = atob(CLERK_KEY.split("_")[2]).replace(/\$+$/, ""); // immune-dinosaur-48.clerk.accounts.dev
+    const portal = fapi.replace(".clerk.accounts.dev", ".accounts.dev");
+    if (!portal.endsWith(".accounts.dev")) return null;
+    return `https://${portal}/sign-in?redirect_url=${encodeURIComponent(window.location.href)}`;
+  } catch {
+    return null;
+  }
 }
 
 function SignInModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
