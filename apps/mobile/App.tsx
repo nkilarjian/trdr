@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { alertVM, fairValueVM } from "./src/trdr-ui";
@@ -13,7 +13,13 @@ type Passport = {
   recent: { date: string; price: number; type: string }[];
 };
 
-const data = snapshot as unknown as { alerts: Alert[]; passport: Passport };
+type Feed = { alerts: Alert[]; passport: Passport };
+
+const FALLBACK = snapshot as unknown as Feed;
+
+// Set EXPO_PUBLIC_API_BASE (e.g. http://192.168.x.x:3000) to fetch live from the
+// Fastify API; otherwise the app renders the bundled snapshot offline.
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
 
 const C = {
   bg: "#0b0e14",
@@ -32,23 +38,51 @@ const tone = (t: string) => (t === "high" || t === "ok" ? C.green : t === "mediu
 
 export default function App() {
   const [tab, setTab] = useState<"alerts" | "passport">("alerts");
+  const [feed, setFeed] = useState<Feed>(FALLBACK);
+  const [source, setSource] = useState<"snapshot" | "live">("snapshot");
+
+  useEffect(() => {
+    if (!API_BASE) return;
+    let active = true;
+    fetch(`${API_BASE}/api/v1/feed`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((json: Feed) => {
+        if (active) {
+          setFeed(json);
+          setSource("live");
+        }
+      })
+      .catch(() => {
+        /* unreachable API → keep the bundled snapshot */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
       <View style={styles.header}>
         <Text style={styles.brand}>TRDR</Text>
         <Text style={styles.sub}>graded-card mispricing terminal</Text>
+        <View style={[styles.srcChip, source === "live" ? styles.srcLive : styles.srcSnap]}>
+          <Text style={[styles.srcText, { color: source === "live" ? C.green : C.muted }]}>
+            {source === "live" ? "live" : "snapshot"}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.tabs}>
-        <TabButton label={`Alerts · ${data.alerts.length}`} active={tab === "alerts"} onPress={() => setTab("alerts")} />
+        <TabButton label={`Alerts · ${feed.alerts.length}`} active={tab === "alerts"} onPress={() => setTab("alerts")} />
         <TabButton label="Passport" active={tab === "passport"} onPress={() => setTab("passport")} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
-        {tab === "alerts" ? <AlertsFeed /> : <PassportScreen />}
+        {tab === "alerts" ? <AlertsFeed alerts={feed.alerts} /> : <PassportScreen passport={feed.passport} />}
         <Text style={styles.foot}>
-          Snapshot from the live model pipeline on mock data · {data.passport.fairValue.compCount} clean comps
+          {source === "live" ? "Live from the model API" : "Bundled snapshot"} on mock data ·{" "}
+          {feed.passport.fairValue.compCount} clean comps
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -63,11 +97,11 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
-function AlertsFeed() {
+function AlertsFeed({ alerts }: { alerts: Alert[] }) {
   return (
     <View>
       <Text style={styles.colH}>Underpriced alerts</Text>
-      {data.alerts.map((a) => {
+      {alerts.map((a) => {
         const vm = alertVM(a);
         return (
           <View key={a.itemId} style={styles.card}>
@@ -102,8 +136,7 @@ function AlertsFeed() {
   );
 }
 
-function PassportScreen() {
-  const p = data.passport;
+function PassportScreen({ passport: p }: { passport: Passport }) {
   const fv = fairValueVM(p.fairValue as never);
   const span = p.fairValue.upper - p.fairValue.lower || 1;
   const pointPct = ((p.fairValue.point - p.fairValue.lower) / span) * 100;
@@ -200,6 +233,10 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 8, flexDirection: "row", alignItems: "baseline", gap: 10 },
   brand: { color: C.ink, fontSize: 20, fontWeight: "700", letterSpacing: 2 },
   sub: { color: C.muted, fontSize: 12 },
+  srcChip: { marginLeft: "auto", borderWidth: 1, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
+  srcLive: { borderColor: "rgba(63,185,80,.4)" },
+  srcSnap: { borderColor: C.line },
+  srcText: { fontSize: 11 },
   tabs: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   tab: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: C.line },
   tabActive: { backgroundColor: C.panel2, borderColor: C.accent },

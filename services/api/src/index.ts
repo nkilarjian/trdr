@@ -4,7 +4,7 @@
 
 import Fastify from "fastify";
 import { DefaultIdentityResolver } from "@trdr/identity";
-import { scanOnce, selectProviders, type WatchedKey } from "@trdr/ingestion";
+import { buildFeed, DEMO_FEED_PARAMS, scanOnce, selectProviders, type WatchedKey } from "@trdr/ingestion";
 import type { Grader } from "@trdr/core";
 
 const providers = selectProviders();
@@ -31,6 +31,15 @@ app.get<{ Params: { itemId: string } }>("/api/v1/resolve/listing/:itemId", async
 app.post<{ Body: { watched: WatchedKey[] } }>("/api/v1/alerts", async (req) => {
   const alerts = await scanOnce(providers, req.body.watched ?? []);
   return { alerts };
+});
+
+// Client feed: alerts + card passport in one payload. The mobile app fetches
+// this live and falls back to its bundled snapshot when unreachable. Same
+// buildFeed() the snapshot generator uses, so the two never drift.
+app.get<{ Querystring: { grader?: string; cert?: string } }>("/api/v1/feed", async (req) => {
+  const grader = (req.query.grader as Grader) ?? DEMO_FEED_PARAMS.grader;
+  const cert = req.query.cert ?? DEMO_FEED_PARAMS.cert;
+  return buildFeed(providers, { ...DEMO_FEED_PARAMS, grader, cert });
 });
 
 // TODO(Phase 1): POST /auth, eBay OAuth handoff (encrypt tokens at rest),

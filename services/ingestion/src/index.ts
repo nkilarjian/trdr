@@ -6,6 +6,7 @@ import { buildAlert, computeFairValue, scoreSeller, type Alert, type CanonicalCa
 import type { Providers } from "./providers.js";
 
 export * from "./providers.js";
+export * from "./feed.js";
 
 export interface WatchedKey {
   key: CanonicalCardKey;
