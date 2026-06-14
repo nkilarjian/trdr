@@ -10,6 +10,7 @@
     "backtest": "tsx scripts/backtest.ts",
     "preview": "tsx scripts/build-preview.ts",
     "snapshot": "tsx scripts/build-snapshot.ts",
+    "accumulate": "tsx scripts/accumulate.ts",
     "build": "turbo run build",
     "test": "turbo run test"
   },

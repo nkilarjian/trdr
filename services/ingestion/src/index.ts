@@ -9,6 +9,7 @@ export * from "./providers.js";
 export * from "./feed.js";
 export * from "./wishlist.js";
 export * from "./library.js";
+export * from "./accumulate.js";
 
 export interface WatchedKey {
   key: CanonicalCardKey;

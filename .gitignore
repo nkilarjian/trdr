@@ -26,3 +26,7 @@ apps/desktop/src-tauri/target/
 ~$*
 .DS_Store
 Thumbs.db
+
+# accumulated sold-comps data (built at runtime)
+services/ingestion/data/
+sold-comps.json
