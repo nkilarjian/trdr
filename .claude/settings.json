@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm test)",
+      "Bash(pnpm e2e)",
+      "Bash(pnpm backtest)",
+      "Bash(pnpm snapshot)",
+      "Bash(pnpm --filter * test)",
+      "Bash(pnpm --filter * typecheck)"
+    ]
+  }
+}

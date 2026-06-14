@@ -2,6 +2,7 @@ import { Children, createContext, useContext, useEffect, useState, type ReactNod
 import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -114,6 +115,18 @@ export default function App() {
   const [holdings, setHoldings] = useState<ValuedHolding[]>(FALLBACK.library.holdings);
   const [pro, setPro] = useState(false); // Pro mode reveals the quant terms
   const [textScale, setTextScale] = useState(1); // Dynamic Type: app-level text size
+  const [onboarded, setOnboarded] = useState<boolean | null>(null); // null = still loading
+
+  useEffect(() => {
+    AsyncStorage.getItem("trdr.onboarded")
+      .then((v) => setOnboarded(v === "1"))
+      .catch(() => setOnboarded(true));
+  }, []);
+
+  const finishOnboarding = () => {
+    setOnboarded(true);
+    AsyncStorage.setItem("trdr.onboarded", "1").catch(() => {});
+  };
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -214,6 +227,21 @@ export default function App() {
     </SafeAreaProvider>
   );
 
+  // First run: a friendly welcome before the main app.
+  if (onboarded === null) return null;
+  if (!onboarded) {
+    return (
+      <SafeAreaProvider>
+        <ScaleCtx.Provider value={textScale}>
+          <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+            <StatusBar style="light" />
+            <Onboarding onDone={finishOnboarding} />
+          </SafeAreaView>
+        </ScaleCtx.Provider>
+      </SafeAreaProvider>
+    );
+  }
+
   // Wide screens (iPad landscape / desktop): a left sidebar nav + centered content.
   if (kind === "wide") {
     return shell(
@@ -248,6 +276,38 @@ export default function App() {
         ))}
       </View>
     </>,
+  );
+}
+
+function Onboarding({ onDone }: { onDone: () => void }) {
+  const features: { icon: IconName; title: string; sub: string }[] = [
+    { icon: "pricetags-outline", title: "Find great deals", sub: "We watch the market and flag cards selling below value." },
+    { icon: "albums-outline", title: "Snap your collection", sub: "One photo reads many cards at once — no typing them in." },
+    { icon: "heart-outline", title: "Build a wishlist", sub: "Tell us what you want; we hunt for it in the background." },
+  ];
+  return (
+    <View style={styles.obWrap}>
+      <Text style={styles.obBrand}>TRDR</Text>
+      <Text style={styles.obTitle}>Know what your cards are worth.</Text>
+      <Text style={styles.obSub}>Friendly by default — flip on Pro mode anytime for the deep numbers.</Text>
+      <View style={{ marginTop: 28, gap: 18 }}>
+        {features.map((f) => (
+          <View key={f.title} style={styles.obRow}>
+            <View style={styles.obIcon}>
+              <Ionicons name={f.icon} size={22} color={C.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.obRowTitle}>{f.title}</Text>
+              <Text style={styles.obRowSub}>{f.sub}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+      <View style={{ flex: 1 }} />
+      <Pressable style={styles.obBtn} onPress={onDone}>
+        <Text style={styles.obBtnText}>Get started</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -810,6 +870,17 @@ const styles = StyleSheet.create({
   bottomBar: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.bg, paddingTop: 8 },
   bottomTab: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
   bottomTabText: { fontSize: 11, fontWeight: "600" },
+
+  obWrap: { flex: 1, paddingHorizontal: 26, paddingTop: 40, paddingBottom: 28 },
+  obBrand: { color: C.ink, fontSize: 22, fontWeight: "800", letterSpacing: 3 },
+  obTitle: { color: C.ink, fontSize: 26, fontWeight: "800", letterSpacing: -0.5, marginTop: 16, lineHeight: 32 },
+  obSub: { color: C.muted, fontSize: 14, marginTop: 10, lineHeight: 20 },
+  obRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  obIcon: { width: 46, height: 46, borderRadius: 12, backgroundColor: "#101a2e", borderWidth: 1, borderColor: "rgba(116,177,240,.3)", alignItems: "center", justifyContent: "center" },
+  obRowTitle: { color: C.ink, fontSize: 16, fontWeight: "700" },
+  obRowSub: { color: C.muted, fontSize: 13, marginTop: 2, lineHeight: 18 },
+  obBtn: { backgroundColor: C.accent, borderRadius: 14, paddingVertical: 16, alignItems: "center" },
+  obBtnText: { color: "#04122b", fontSize: 17, fontWeight: "700" },
   ppHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
 
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
