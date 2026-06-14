@@ -37,6 +37,25 @@ npm install
 npx expo export -p web    # writes dist/ — verified: 201 modules, contains both screens
 ```
 
+## Native iOS app via EAS Build → TestFlight
+
+Needs an Apple Developer account + a (free) Expo account. EAS builds in the cloud
+(no Mac/Xcode needed). Bundle id is `com.trdr.app` (app.json); profiles in eas.json.
+
+```bash
+npm install -g eas-cli            # or: npx eas-cli@latest <cmd>
+cd apps/mobile
+eas login                         # free Expo account
+eas init                          # links a project id into app.json (extra.eas.projectId)
+eas build -p ios --profile production
+#   → prompts to log into Apple, auto-creates certs/provisioning, builds (~10-20 min)
+eas submit -p ios --latest        # uploads the build to App Store Connect → TestFlight
+```
+
+Then add testers in App Store Connect → install via the **TestFlight** app on the
+device. Monorepo note: the app is self-contained (npm, vendored shared code), so
+EAS builds it from `apps/mobile` without workspace wiring.
+
 ## Notes
 
 - `expo install --check` confirms the React/RN/web versions are SDK-56 aligned.
