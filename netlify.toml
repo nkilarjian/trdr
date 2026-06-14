@@ -1,0 +1,17 @@
+# Netlify config for the installable web app (PWA). Connect this repo at
+# app.netlify.com → "Add new site" → "Import from GitHub" → nkilarjian/trdr.
+# (Netlify hosts the static web app; the API still needs a Node host — Render,
+#  Railway, Fly, etc. Until then the app runs on the bundled demo data.)
+[build]
+  base = "apps/mobile"
+  command = "npm ci && npx expo export -p web"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA fallback so deep links resolve to the single-page app.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
