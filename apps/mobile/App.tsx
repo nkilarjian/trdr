@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { alertVM, fairValueVM } from "@trdr/ui";
+import { alertVM, fairValueVM } from "./src/trdr-ui";
 import type { Alert } from "@trdr/core";
 import snapshot from "./assets/data.json";
 
