@@ -27,7 +27,9 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: corepack enable && pnpm install
+    # --prod=false so tsx/typescript (the API runs via tsx) are installed even
+    # though Render sets NODE_ENV=production.
+    buildCommand: corepack enable && pnpm install --prod=false
     startCommand: pnpm --filter @trdr/api start
     healthCheckPath: /health
     envVars:
