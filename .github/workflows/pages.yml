@@ -32,6 +32,10 @@ jobs:
 
       - name: Build web (base /trdr)
         working-directory: apps/mobile
+        env:
+          # Clerk publishable key is public (ships in every client) — safe to commit.
+          # Enables sign in (email code + Google) and cross-device wishlist/library sync.
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_aW1tdW5lLWRpbm9zYXVyLTQ4LmNsZXJrLmFjY291bnRzLmRldiQ
         run: |
           npm ci
           node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.experiments={...(j.expo.experiments||{}),baseUrl:'/trdr'};fs.writeFileSync('app.json',JSON.stringify(j,null,2));"
