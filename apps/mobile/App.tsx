@@ -164,6 +164,30 @@ export default function App() {
       });
   };
 
+  // Price the on-device library against the live model (real eBay data when the
+  // API has credentials). Posts the user's holdings, merges fair values back in.
+  const revalueLibrary = (hs: ValuedHolding[]) => {
+    if (!API_BASE || !hs.length) return;
+    fetch(`${API_BASE}/api/v1/library/value`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ holdings: hs.map((v) => v.holding) }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((b: { holdings: ValuedHolding[] }) => {
+        if (!Array.isArray(b.holdings)) return;
+        const byId = new Map(b.holdings.map((v) => [v.holding.id, v]));
+        setHoldings((prev) => {
+          const next = prev.map((v) => byId.get(v.holding.id) ?? v);
+          AsyncStorage.setItem("trdr.library", JSON.stringify(next)).catch(() => {});
+          return next;
+        });
+      })
+      .catch(() => {
+        /* unreachable API → cards stay unvalued (shown as —) */
+      });
+  };
+
   useEffect(() => {
     let active = true;
     AsyncStorage.getItem("trdr.wishlist")
@@ -177,7 +201,11 @@ export default function App() {
     // your library is stored on the device
     AsyncStorage.getItem("trdr.library")
       .then((v) => {
-        if (active && v) setHoldings(JSON.parse(v) as ValuedHolding[]);
+        if (active && v) {
+          const saved = JSON.parse(v) as ValuedHolding[];
+          setHoldings(saved);
+          revalueLibrary(saved); // refresh values from the live model on open
+        }
       })
       .catch(() => {});
     return () => {
@@ -209,6 +237,7 @@ export default function App() {
     setHoldings((prev) => {
       const next = [...prev, { holding: parseHolding(text, `h-${Date.now()}`) }];
       persistLib(next);
+      revalueLibrary(next); // fetch a live value for the newly added card
       return next;
     });
   };

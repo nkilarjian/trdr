@@ -24,7 +24,7 @@ import {
   watchlistPath,
   type WatchedKey,
 } from "@trdr/ingestion";
-import type { Grader, WishSpec } from "@trdr/core";
+import type { Grader, Holding, WishSpec } from "@trdr/core";
 
 // Load repo-root .env so credentials are picked up without exporting by hand
 // (Node 20.12+/22+ built-in). Must run before selectProviders reads process.env.
@@ -93,6 +93,15 @@ app.post<{ Body: { specs?: WishSpec[] } }>("/api/v1/board", async (req) => {
 // Library: the cards the user owns, valued by the model.
 app.get("/api/v1/library", async () => {
   return { holdings: await valueLibrary(providers, library.all(), DEMO_LIBRARY_NOW) };
+});
+
+// Value the cards the CLIENT holds (the phone's on-device library). The app
+// stores holdings locally; it posts them here to get live fair values back.
+// Uncredentialed → mock values; with EBAY_* set → real eBay-backed valuation.
+app.post<{ Body: { holdings?: Holding[] } }>("/api/v1/library/value", async (req) => {
+  const holdings = (req.body?.holdings ?? []).filter((h) => h?.id && h?.key);
+  if (!holdings.length) return { holdings: [] };
+  return { holdings: await valueLibrary(providers, holdings) };
 });
 
 // Snap your collection: read many slabs from one photo, auto-add the confident
