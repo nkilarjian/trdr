@@ -1,6 +1,6 @@
-# Auto-deploy the web app to GitHub Pages on every push to master.
-# The base path /trdr (project Pages live under /<repo>/) is injected at build
-# time so the committed app.json stays root-relative for local serve / native / EAS.
+# Deploy the web app to GitHub Pages via the official Actions pipeline (build →
+# upload artifact → deploy). The base path /trdr (project Pages live under
+# /<repo>/) is injected at build time so the committed app.json stays root-relative.
 name: Deploy web to GitHub Pages
 
 on:
@@ -14,14 +14,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
+# One deploy at a time; let an in-flight one finish so a deployment isn't orphaned.
 concurrency:
-  group: pages-deploy
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +37,6 @@ jobs:
         working-directory: apps/mobile
         env:
           # Clerk publishable key is public (ships in every client) — safe to commit.
-          # Enables sign in (email code + Google) and cross-device wishlist/library sync.
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_aW1tdW5lLWRpbm9zYXVyLTQ4LmNsZXJrLmFjY291bnRzLmRldiQ
         run: |
           npm ci
@@ -42,15 +44,18 @@ jobs:
           npx expo export -p web
           touch dist/.nojekyll
 
-      - name: Publish to gh-pages branch
-        working-directory: apps/mobile/dist
-        run: |
-          git init -q
-          git checkout -q -b gh-pages
-          git config user.email "actions@github.com"
-          git config user.name "github-actions"
-          git add -A
-          git commit -q -m "Deploy ${GITHUB_SHA}"
-          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/mobile/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
