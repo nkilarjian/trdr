@@ -19,6 +19,7 @@ import type { Providers } from "./providers.js";
 export interface PassportView {
   key: CanonicalCardKey;
   cert: string | null;
+  imageUrl?: string;
   fairValue: FairValue;
   pop: { atGrade: number; higher: number; total: number } | null;
   recent: { date: string; price: number; type: string }[];
@@ -63,12 +64,14 @@ export async function buildFeed(providers: Providers, params: FeedParams): Promi
 
   const pop = await providers.grading.getPopulation(resolution.key);
 
+  const listings = await providers.market.searchActive({ key: resolution.key });
   const alerts: Alert[] = [];
-  for (const listing of await providers.market.searchActive({ key: resolution.key })) {
+  for (const listing of listings) {
     const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
     const alert = buildAlert({ listing, key: resolution.key, fairValue, sellerRisk, epnCampaignId: params.epnCampaignId, nowMs });
     if (alert) alerts.push(alert);
   }
+  const imageUrl = listings[0]?.slabPhotoUrls[0];
 
   const recent = [...comps]
     .filter((c: SoldComp) => c.qty === 1 && !looksManipulated(c))
@@ -79,7 +82,7 @@ export async function buildFeed(providers: Providers, params: FeedParams): Promi
   return {
     generatedAt: new Date(nowMs).toISOString(),
     alerts,
-    passport: { key: resolution.key, cert: resolution.cert ?? null, fairValue, pop, recent },
+    passport: { key: resolution.key, cert: resolution.cert ?? null, imageUrl, fairValue, pop, recent },
   };
 }
 

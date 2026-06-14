@@ -35,6 +35,8 @@ importers:
 
   packages/providers/market-data: {}
 
+  packages/providers/vision: {}
+
   packages/ui: {}
 
   services/api:

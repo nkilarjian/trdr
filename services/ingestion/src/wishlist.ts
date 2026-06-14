@@ -27,6 +27,7 @@ export interface WishHit {
   interest: number;
   tags: string[];
   fairBand?: { lower: number; point: number; upper: number };
+  imageUrl?: string;
   deepLink: string;
 }
 
@@ -109,6 +110,7 @@ export async function scanWishlist(
         interest: score.interest,
         tags: score.tags,
         fairBand,
+        imageUrl: listing.slabPhotoUrls[0],
         deepLink: deepLink(listing.itemId, opts.epnCampaignId),
       };
       // a listing can match several wishes — keep the strongest attribution

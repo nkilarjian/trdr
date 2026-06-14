@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { alertVM, fairValueVM } from "./src/trdr-ui";
 import { buildWishTree, parseWish, type WishNode, type WishSpec } from "./src/trdr-wishlist";
 import type { Alert } from "@trdr/core";
 import snapshot from "./assets/data.json";
 
+type CardKey = { set: string; number: string; variant?: string; grader: string; grade: number };
+
 type Passport = {
-  key: { set: string; number: string; variant?: string; grader: string; grade: number };
+  key: CardKey;
   cert: string | null;
+  imageUrl?: string;
   fairValue: { point: number; lower: number; upper: number; confidence: number; liquidity: number; compCount: number };
   pop: { atGrade: number; higher: number; total: number } | null;
   recent: { date: string; price: number; type: string }[];
@@ -26,12 +29,29 @@ type WishHit = {
   interest: number;
   tags: string[];
   fairBand?: { lower: number; point: number; upper: number };
+  imageUrl?: string;
   deepLink: string;
 };
 
 type Wishlist = { specs: WishSpec[]; tree: WishNode; hits: WishHit[] };
 
-type Feed = { alerts: Alert[]; passport: Passport; wishlist: Wishlist };
+type Holding = { id: string; key: CardKey; cert?: string; imageUrl?: string; acquiredPrice?: number };
+type ValuedHolding = {
+  holding: Holding;
+  fairValue?: { point: number; lower: number; upper: number; confidence: number };
+  trendPct?: number;
+  unrealizedPL?: number;
+};
+type Detection = { id: string; grader?: string; certGuess?: string; confidence: number; cropUrl?: string };
+type Scan = { detected: number; added: Holding[]; review: { detection: Detection; reason: string }[]; valued: ValuedHolding[] };
+
+type Feed = {
+  alerts: Alert[];
+  passport: Passport;
+  wishlist: Wishlist;
+  library: { holdings: ValuedHolding[] };
+  scan: Scan;
+};
 
 const FALLBACK = snapshot as unknown as Feed;
 
@@ -55,12 +75,13 @@ const C = {
 const tone = (t: string) => (t === "high" || t === "ok" ? C.green : t === "medium" || t === "caution" ? C.amber : C.red);
 
 export default function App() {
-  const [tab, setTab] = useState<"alerts" | "passport" | "wishlist">("alerts");
+  const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "passport">("alerts");
   const [feed, setFeed] = useState<Feed>(FALLBACK);
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
   // wishlist specs are user-owned (the tree re-groups locally as they add wishes)
   const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
   const [hits, setHits] = useState<WishHit[]>(FALLBACK.wishlist.hits);
+  const [holdings, setHoldings] = useState<ValuedHolding[]>(FALLBACK.library.holdings);
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -82,6 +103,12 @@ export default function App() {
         if (active) setHits(w.hits);
       })
       .catch(() => {});
+    fetch(`${API_BASE}/api/v1/library`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((l: { holdings: ValuedHolding[] }) => {
+        if (active) setHoldings(l.holdings);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -89,6 +116,11 @@ export default function App() {
 
   const addWish = (text: string) => setSpecs((prev) => [...prev, parseWish(text, `w-${Date.now()}`)]);
   const tree = buildWishTree(specs);
+  const addScanned = (valued: ValuedHolding[]) =>
+    setHoldings((prev) => {
+      const seen = new Set(prev.map((v) => v.holding.id));
+      return [...prev, ...valued.filter((v) => !seen.has(v.holding.id))];
+    });
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -103,16 +135,18 @@ export default function App() {
         </View>
       </View>
 
-      <View style={styles.tabs}>
-        <TabButton label={`Alerts · ${feed.alerts.length}`} active={tab === "alerts"} onPress={() => setTab("alerts")} />
-        <TabButton label="Passport" active={tab === "passport"} onPress={() => setTab("passport")} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+        <TabButton label={`Deals · ${feed.alerts.length}`} active={tab === "alerts"} onPress={() => setTab("alerts")} />
+        <TabButton label={`Library · ${holdings.length}`} active={tab === "library"} onPress={() => setTab("library")} />
         <TabButton label={`Wishlist · ${hits.length}`} active={tab === "wishlist"} onPress={() => setTab("wishlist")} />
-      </View>
+        <TabButton label="Card" active={tab === "passport"} onPress={() => setTab("passport")} />
+      </ScrollView>
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
         {tab === "alerts" && <AlertsFeed alerts={feed.alerts} />}
-        {tab === "passport" && <PassportScreen passport={feed.passport} />}
+        {tab === "library" && <LibraryScreen holdings={holdings} scan={feed.scan} onAddScanned={addScanned} />}
         {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} />}
+        {tab === "passport" && <PassportScreen passport={feed.passport} />}
         <Text style={styles.foot}>
           {source === "live" ? "Live from the model API" : "Bundled snapshot"} on mock data ·{" "}
           {feed.passport.fairValue.compCount} clean comps
@@ -139,6 +173,7 @@ function AlertsFeed({ alerts }: { alerts: Alert[] }) {
         return (
           <View key={a.itemId} style={styles.card}>
             <View style={styles.alertTop}>
+              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={40} />
               <View style={[styles.badge, { backgroundColor: a.buyingOption === "AUCTION" ? "#16314f" : "#13301f" }]}>
                 <Text style={[styles.badgeText, { color: a.buyingOption === "AUCTION" ? C.accent : "#5ec06f" }]}>
                   {a.buyingOption}
@@ -179,22 +214,26 @@ function PassportScreen({ passport: p }: { passport: Passport }) {
     <View>
       <Text style={styles.colH}>Card passport</Text>
       <View style={styles.passport}>
-        <View style={styles.ppGradeRow}>
-          <View style={styles.gradeChip}>
-            <Text style={styles.gradeChipText}>
-              {p.key.grader} {p.key.grade}
+        <View style={styles.ppHeader}>
+          <CardImage uri={p.imageUrl} label={`${p.key.grader} ${p.key.grade}`} size={76} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <View style={styles.ppGradeRow}>
+              <View style={styles.gradeChip}>
+                <Text style={styles.gradeChipText}>
+                  {p.key.grader} {p.key.grade}
+                </Text>
+              </View>
+              <View style={styles.verified}>
+                <Text style={styles.verifiedText}>verified slab</Text>
+              </View>
+            </View>
+            <Text style={styles.ppName}>
+              {p.key.set} #{p.key.number}
+              {p.key.variant ? ` ${p.key.variant}` : ""}
             </Text>
-          </View>
-          <Text style={styles.ppCert}>cert {p.cert ?? "—"}</Text>
-          <View style={styles.verified}>
-            <Text style={styles.verifiedText}>verified slab</Text>
+            <Text style={styles.ppCert}>cert {p.cert ?? "—"}</Text>
           </View>
         </View>
-
-        <Text style={styles.ppName}>
-          {p.key.set} #{p.key.number}
-          {p.key.variant ? ` ${p.key.variant}` : ""}
-        </Text>
         <Text style={styles.ppPoint}>
           {fv.point} <Text style={styles.ppPointSmall}>fair value</Text>
         </Text>
@@ -339,6 +378,7 @@ function HitCard({ hit }: { hit: WishHit }) {
   return (
     <View style={styles.card}>
       <View style={styles.alertTop}>
+        <CardImage uri={hit.imageUrl} label={hit.buyingOption} size={40} />
         <View style={[styles.badge, { backgroundColor: hit.buyingOption === "AUCTION" ? "#16314f" : "#13301f" }]}>
           <Text style={[styles.badgeText, { color: hit.buyingOption === "AUCTION" ? C.accent : "#5ec06f" }]}>
             {hit.buyingOption}
@@ -365,6 +405,127 @@ function HitCard({ hit }: { hit: WishHit }) {
       <Pressable onPress={() => Linking.openURL(hit.deepLink)}>
         <Text style={styles.cta}>Open on eBay →</Text>
       </Pressable>
+    </View>
+  );
+}
+
+function CardImage({ uri, label, size = 52 }: { uri?: string; label?: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  if (uri && !err) {
+    return <Image source={{ uri }} onError={() => setErr(true)} style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.panel2 }} />;
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ color: C.muted, fontSize: size > 44 ? 11 : 9, fontWeight: "700", textAlign: "center" }}>{label ?? "CARD"}</Text>
+    </View>
+  );
+}
+
+function LibraryScreen({ holdings, scan, onAddScanned }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void }) {
+  const [scanning, setScanning] = useState(false);
+  const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
+  return (
+    <View>
+      <Text style={styles.colH}>Your library</Text>
+      <View style={styles.libSummary}>
+        <View>
+          <Text style={styles.libSumV}>{holdings.length}</Text>
+          <Text style={styles.libSumL}>cards</Text>
+        </View>
+        <View>
+          <Text style={styles.libSumV}>${Math.round(total).toLocaleString()}</Text>
+          <Text style={styles.libSumL}>est. value</Text>
+        </View>
+      </View>
+
+      <Pressable style={styles.scanBtn} onPress={() => setScanning(true)}>
+        <Text style={styles.scanBtnText}>Scan a photo of your cards</Text>
+        <Text style={styles.scanBtnSub}>Reads many cards from one picture — no typing</Text>
+      </Pressable>
+
+      {scanning ? (
+        <ScanFlow
+          scan={scan}
+          onAdd={() => {
+            onAddScanned(scan.valued);
+            setScanning(false);
+          }}
+          onCancel={() => setScanning(false)}
+        />
+      ) : null}
+
+      {holdings.map((v) => (
+        <HoldingCard key={v.holding.id} v={v} />
+      ))}
+    </View>
+  );
+}
+
+function HoldingCard({ v }: { v: ValuedHolding }) {
+  const k = v.holding.key;
+  const val = v.fairValue ? `$${Math.round(v.fairValue.point).toLocaleString()}` : "—";
+  const up = (v.trendPct ?? 0) >= 0;
+  const trend = v.trendPct != null ? `${up ? "▲" : "▼"} ${Math.abs(v.trendPct * 100).toFixed(1)}%/mo` : "";
+  const plUp = (v.unrealizedPL ?? 0) >= 0;
+  const pl = v.unrealizedPL != null ? `${plUp ? "+" : "−"}$${Math.abs(Math.round(v.unrealizedPL)).toLocaleString()}` : "";
+  return (
+    <View style={styles.holdingRow}>
+      <CardImage uri={v.holding.imageUrl} label={`${k.grader} ${k.grade}`} size={52} />
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={styles.holdingName} numberOfLines={1}>
+          {k.set} #{k.number}
+          {k.variant ? ` ${k.variant}` : ""}
+        </Text>
+        <Text style={styles.holdingSub}>
+          {k.grader} {k.grade}
+          {v.holding.cert ? ` · cert ${v.holding.cert}` : ""}
+        </Text>
+        {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
+      </View>
+      <View style={{ alignItems: "flex-end" }}>
+        <Text style={styles.holdingVal}>{val}</Text>
+        {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function ScanFlow({ scan, onAdd, onCancel }: { scan: Scan; onAdd: () => void; onCancel: () => void }) {
+  return (
+    <View style={styles.scanBox}>
+      <Text style={styles.scanTitle}>
+        Read {scan.added.length} of {scan.detected} cards
+      </Text>
+      <Text style={styles.hint}>One photo of a stack — we read as many as we can at once.</Text>
+      <View style={styles.scanGrid}>
+        {scan.valued.map((v) => (
+          <View key={v.holding.id} style={styles.scanCell}>
+            <CardImage uri={v.holding.imageUrl} label={`${v.holding.key.grader} ${v.holding.key.grade}`} size={66} />
+            <Text style={styles.scanCheck}>✓ read</Text>
+          </View>
+        ))}
+      </View>
+      {scan.review.length > 0 ? (
+        <View>
+          <Text style={[styles.hint, { marginTop: 12 }]}>{scan.review.length} need a quick check:</Text>
+          <View style={styles.scanGrid}>
+            {scan.review.map((r) => (
+              <View key={r.detection.id} style={styles.scanCell}>
+                <CardImage uri={r.detection.cropUrl} label="?" size={66} />
+                <Text style={styles.scanQ}>tap to confirm</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      <View style={styles.scanActions}>
+        <Pressable style={styles.scanCancel} onPress={onCancel}>
+          <Text style={styles.scanCancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable style={styles.scanAdd} onPress={onAdd}>
+          <Text style={styles.scanAddText}>Add {scan.added.length} cards</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -441,4 +602,32 @@ const styles = StyleSheet.create({
   tag: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   tagText: { fontSize: 11 },
   price: { color: C.ink, fontSize: 14, fontWeight: "800" },
+
+  tabsScroll: { flexGrow: 0 },
+  ppHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+
+  libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
+  libSumV: { color: C.ink, fontSize: 20, fontWeight: "800" },
+  libSumL: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
+  scanBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 14, alignItems: "center" },
+  scanBtnText: { color: "#04122b", fontSize: 16, fontWeight: "700" },
+  scanBtnSub: { color: "#0a2547", fontSize: 12, marginTop: 2 },
+  holdingRow: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 12, marginBottom: 10 },
+  holdingName: { color: C.ink, fontSize: 14, fontWeight: "600" },
+  holdingSub: { color: C.muted, fontSize: 12, marginTop: 2 },
+  holdingTrend: { fontSize: 12, fontWeight: "600", marginTop: 3 },
+  holdingVal: { color: C.ink, fontSize: 16, fontWeight: "800" },
+  holdingPL: { fontSize: 12, fontWeight: "600", marginTop: 3 },
+
+  scanBox: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.accent, borderRadius: 12, padding: 14, marginBottom: 14 },
+  scanTitle: { color: C.ink, fontSize: 16, fontWeight: "700" },
+  scanGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 },
+  scanCell: { width: 66, alignItems: "center" },
+  scanCheck: { color: C.green, fontSize: 10, fontWeight: "700", marginTop: 4 },
+  scanQ: { color: C.amber, fontSize: 10, marginTop: 4 },
+  scanActions: { flexDirection: "row", gap: 10, marginTop: 14 },
+  scanCancel: { flex: 1, borderWidth: 1, borderColor: C.line, borderRadius: 11, paddingVertical: 12, alignItems: "center" },
+  scanCancelText: { color: C.muted, fontSize: 14, fontWeight: "600" },
+  scanAdd: { flex: 2, backgroundColor: C.green, borderRadius: 11, paddingVertical: 12, alignItems: "center" },
+  scanAddText: { color: "#04210f", fontSize: 14, fontWeight: "700" },
 });

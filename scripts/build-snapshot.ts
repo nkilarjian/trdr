@@ -9,17 +9,25 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import {
   buildFeed,
+  bulkIngest,
   DEMO_FEED_PARAMS,
+  DEMO_LIBRARY,
+  DEMO_LIBRARY_NOW,
   DEMO_WISHLIST,
   DEMO_WISHLIST_OPTS,
   scanWishlist,
   selectProviders,
+  valueLibrary,
 } from "@trdr/ingestion";
 
 async function main() {
   const providers = selectProviders();
   const feed = await buildFeed(providers, DEMO_FEED_PARAMS);
   const wishlist = await scanWishlist(providers, DEMO_WISHLIST, DEMO_WISHLIST_OPTS);
+  const library = { holdings: await valueLibrary(providers, DEMO_LIBRARY, DEMO_LIBRARY_NOW) };
+  // a pre-computed "snap your collection" result so the scan flow works offline
+  const rawScan = await bulkIngest(providers, { uri: "demo://stack.jpg" });
+  const scan = { ...rawScan, valued: await valueLibrary(providers, rawScan.added, DEMO_LIBRARY_NOW) };
 
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const vendorDir = resolve(root, "apps", "mobile", "src");
@@ -28,10 +36,10 @@ async function main() {
   const assetsDir = resolve(root, "apps", "mobile", "assets");
   mkdirSync(assetsDir, { recursive: true });
   // include the flat specs so the app can re-group the tree live as the user adds wishes
-  const snapshot = { ...feed, wishlist: { ...wishlist, specs: DEMO_WISHLIST } };
+  const snapshot = { ...feed, wishlist: { ...wishlist, specs: DEMO_WISHLIST }, library, scan };
   writeFileSync(resolve(assetsDir, "data.json"), JSON.stringify(snapshot, null, 2), "utf8");
   console.log(
-    `✓ wrote apps/mobile/assets/data.json (${feed.alerts.length} alerts, ${wishlist.hits.length} wishlist hits)`,
+    `✓ wrote apps/mobile/assets/data.json (${feed.alerts.length} alerts, ${wishlist.hits.length} wishlist hits, ${library.holdings.length} holdings, scan read ${scan.added.length}/${scan.detected})`,
   );
 
   // Vendor shared source into the app. Metro reliably watches files under the

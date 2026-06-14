@@ -30,6 +30,11 @@ const CERTS: Record<string, CertRecord> = {
     number: "111",
     confidence: 0.97,
   },
+  // additional cards a bulk photo scan resolves to
+  "PSA:71045511": { grader: "PSA", cert: "71045511", grade: 9, set: "Base Set", number: "4", variant: "1st Edition", confidence: 0.97 },
+  "PSA:62330180": { grader: "PSA", cert: "62330180", grade: 8, set: "1986 Fleer Basketball", number: "57", confidence: 0.96 },
+  "SGC:9921007": { grader: "SGC", cert: "9921007", grade: 9, set: "1996 Topps Chrome Basketball", number: "138", confidence: 0.95 },
+  "PSA:55012345": { grader: "PSA", cert: "55012345", grade: 10, set: "2018 Panini Prizm Basketball", number: "280", confidence: 0.98 },
 };
 
 const POPS: Record<string, PopReport> = {

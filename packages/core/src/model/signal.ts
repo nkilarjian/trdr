@@ -83,6 +83,7 @@ export function buildAlert(input: BuildAlertInput): Alert | null {
     sellerRisk: input.sellerRisk,
     buyingOption: input.listing.buyingOption,
     endTime: input.listing.endTime,
+    imageUrl: input.listing.slabPhotoUrls[0],
     deepLink: buildDeepLink(input.listing.itemId, input.epnCampaignId),
   };
 }

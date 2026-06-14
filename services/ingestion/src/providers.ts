@@ -4,10 +4,12 @@
 
 import { MockGradingProvider, RealGradingProvider, type GradingProvider } from "@trdr/grading";
 import { MockMarketDataProvider, RealMarketDataProvider, type MarketDataProvider } from "@trdr/market-data";
+import { MockVisionProvider, RealVisionProvider, type VisionProvider } from "@trdr/vision";
 
 export interface Providers {
   market: MarketDataProvider;
   grading: GradingProvider;
+  vision: VisionProvider;
 }
 
 export function selectProviders(env: NodeJS.ProcessEnv = process.env): Providers {
@@ -24,7 +26,8 @@ export function selectProviders(env: NodeJS.ProcessEnv = process.env): Providers
         sgcToken: env.SGC_API_TOKEN,
         bgsToken: env.BGS_API_TOKEN,
       }),
+      vision: new RealVisionProvider({ backend: env.VISION_BACKEND, endpointUrl: env.VISION_ENDPOINT_URL, apiKey: env.VISION_API_KEY }),
     };
   }
-  return { market: new MockMarketDataProvider(), grading: new MockGradingProvider() };
+  return { market: new MockMarketDataProvider(), grading: new MockGradingProvider(), vision: new MockVisionProvider() };
 }

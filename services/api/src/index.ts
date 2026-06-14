@@ -6,12 +6,17 @@ import Fastify from "fastify";
 import { DefaultIdentityResolver } from "@trdr/identity";
 import {
   buildFeed,
+  bulkIngest,
   DEMO_FEED_PARAMS,
+  DEMO_LIBRARY,
+  DEMO_LIBRARY_NOW,
   DEMO_WISHLIST,
   DEMO_WISHLIST_OPTS,
+  LibraryStore,
   scanOnce,
   scanWishlist,
   selectProviders,
+  valueLibrary,
   type WatchedKey,
 } from "@trdr/ingestion";
 import type { Grader } from "@trdr/core";
@@ -21,6 +26,7 @@ const resolver = new DefaultIdentityResolver({
   grading: providers.grading,
   listingSource: { getListing: (id) => providers.market.getListing(id) },
 });
+const library = new LibraryStore(DEMO_LIBRARY);
 
 const app = Fastify({ logger: true });
 
@@ -56,6 +62,20 @@ app.get<{ Querystring: { grader?: string; cert?: string } }>("/api/v1/feed", asy
 // POST variant (user-built wishlist) lands with persistence.
 app.get("/api/v1/wishlist", async () => {
   return scanWishlist(providers, DEMO_WISHLIST, DEMO_WISHLIST_OPTS);
+});
+
+// Library: the cards the user owns, valued by the model.
+app.get("/api/v1/library", async () => {
+  return { holdings: await valueLibrary(providers, library.all(), DEMO_LIBRARY_NOW) };
+});
+
+// Snap your collection: read many slabs from one photo, auto-add the confident
+// reads to the library, and return the uncertain ones for quick confirmation.
+app.post<{ Body: { image?: { uri?: string; base64?: string } } }>("/api/v1/library/scan", async (req) => {
+  const result = await bulkIngest(providers, req.body?.image ?? {});
+  library.addMany(result.added);
+  const valued = await valueLibrary(providers, result.added, DEMO_LIBRARY_NOW);
+  return { ...result, valued };
 });
 
 // TODO(Phase 1): POST /auth, eBay OAuth handoff (encrypt tokens at rest),

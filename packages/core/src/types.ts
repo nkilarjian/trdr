@@ -52,6 +52,16 @@ export interface SellerRef {
   feedbackPct?: number;
 }
 
+/** A card the user owns — the Library is a collection of these. */
+export interface Holding {
+  id: string;
+  key: CanonicalCardKey;
+  cert?: string;
+  imageUrl?: string; // photo of the slab (from a scan or the user)
+  acquiredPrice?: number; // cost basis, when known
+  acquiredAt?: string; // ISO
+}
+
 export type SaleType = "auction-close" | "bin-accepted-offer" | "bin-list";
 
 /** A historical sold comp, pre-cleaning (raw from the market provider). */
@@ -89,6 +99,7 @@ export interface Alert {
   sellerRisk: SellerRiskChip;
   buyingOption: "AUCTION" | "BIN";
   endTime?: string;
+  imageUrl?: string; // card photo for the alert card
   deepLink: string; // eBay universal/affiliate link carrying itemId
 }
 

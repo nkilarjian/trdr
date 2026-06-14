@@ -29,6 +29,7 @@
       },
       "buyingOption": "AUCTION",
       "endTime": "2026-06-13T20:00:00Z",
+      "imageUrl": "https://img.test/v1.jpg",
       "deepLink": "https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&campid=DEMO-EPN"
     },
     {
@@ -58,6 +59,7 @@
         "shrunk": true
       },
       "buyingOption": "BIN",
+      "imageUrl": "https://img.test/v3.jpg",
       "deepLink": "https://www.ebay.com/itm/v-underpriced-bin?mkcid=1&campid=DEMO-EPN"
     }
   ],
@@ -70,6 +72,7 @@
       "grade": 10
     },
     "cert": "58127634",
+    "imageUrl": "https://img.test/v1.jpg",
     "fairValue": {
       "point": 299.9234188034188,
       "lower": 290.42291800341883,
@@ -298,6 +301,7 @@
           "rare variant",
           "under budget"
         ],
+        "imageUrl": "https://img.test/v5.jpg",
         "deepLink": "https://www.ebay.com/itm/v-charizard-auction?mkcid=1&campid=DEMO-EPN"
       },
       {
@@ -321,6 +325,7 @@
           "point": 299.90153846153845,
           "upper": 309.40203926153845
         },
+        "imageUrl": "https://img.test/v1.jpg",
         "deepLink": "https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&campid=DEMO-EPN"
       },
       {
@@ -341,6 +346,7 @@
           "point": 1120.456081081081,
           "upper": 1163.208334681081
         },
+        "imageUrl": "https://img.test/v4.jpg",
         "deepLink": "https://www.ebay.com/itm/v-lebron-bin?mkcid=1&campid=DEMO-EPN"
       }
     ],
@@ -381,6 +387,349 @@
         "category": "Pokémon",
         "subject": "Charizard",
         "maxPrice": 1500
+      }
+    ]
+  },
+  "library": {
+    "holdings": [
+      {
+        "holding": {
+          "id": "h-own-luka",
+          "key": {
+            "set": "2018 Panini Prizm Basketball",
+            "number": "280",
+            "variant": "Silver",
+            "grader": "PSA",
+            "grade": 10
+          },
+          "cert": "58127634",
+          "acquiredPrice": 180,
+          "imageUrl": "https://img.test/own1.jpg"
+        },
+        "fairValue": {
+          "point": 299.90153846153845,
+          "lower": 290.40103766153845,
+          "upper": 309.40203926153845,
+          "confidence": 0.810416240309955,
+          "liquidity": 0.40384615384615385,
+          "compCount": 21,
+          "dispersion": 5,
+          "shrunk": false
+        },
+        "trendPct": 0.05580323889184856,
+        "unrealizedPL": 119.90153846153845
+      },
+      {
+        "holding": {
+          "id": "h-own-lebron",
+          "key": {
+            "set": "2003-04 Topps Chrome Basketball",
+            "number": "111",
+            "grader": "CGC",
+            "grade": 9.5
+          },
+          "cert": "4012887001",
+          "acquiredPrice": 1200,
+          "imageUrl": "https://img.test/own2.jpg"
+        },
+        "fairValue": {
+          "point": 1120.456081081081,
+          "lower": 1077.7038274810811,
+          "upper": 1163.208334681081,
+          "confidence": 0.6513961058399795,
+          "liquidity": 0.10666666666666667,
+          "compCount": 8,
+          "dispersion": 22.5,
+          "shrunk": false
+        },
+        "trendPct": -0.012842263872041652,
+        "unrealizedPL": -79.54391891891896
+      },
+      {
+        "holding": {
+          "id": "h-own-charizard",
+          "key": {
+            "set": "Base Set",
+            "number": "4",
+            "variant": "1st Edition",
+            "grader": "PSA",
+            "grade": 9
+          },
+          "cert": "71045511",
+          "acquiredPrice": 350,
+          "imageUrl": "https://img.test/own3.jpg"
+        }
+      }
+    ]
+  },
+  "scan": {
+    "detected": 10,
+    "added": [
+      {
+        "id": "h-d1",
+        "key": {
+          "set": "2018 Panini Prizm Basketball",
+          "number": "280",
+          "variant": "Silver",
+          "grader": "PSA",
+          "grade": 10
+        },
+        "cert": "58127634",
+        "imageUrl": "https://img.test/crop1.jpg"
+      },
+      {
+        "id": "h-d2",
+        "key": {
+          "set": "2018 Panini Prizm Basketball",
+          "number": "280",
+          "variant": "Silver",
+          "grader": "PSA",
+          "grade": 9
+        },
+        "cert": "58127699",
+        "imageUrl": "https://img.test/crop2.jpg"
+      },
+      {
+        "id": "h-d3",
+        "key": {
+          "set": "2003-04 Topps Chrome Basketball",
+          "number": "111",
+          "grader": "CGC",
+          "grade": 9.5
+        },
+        "cert": "4012887001",
+        "imageUrl": "https://img.test/crop3.jpg"
+      },
+      {
+        "id": "h-d4",
+        "key": {
+          "set": "Base Set",
+          "number": "4",
+          "variant": "1st Edition",
+          "grader": "PSA",
+          "grade": 9
+        },
+        "cert": "71045511",
+        "imageUrl": "https://img.test/crop4.jpg"
+      },
+      {
+        "id": "h-d5",
+        "key": {
+          "set": "1986 Fleer Basketball",
+          "number": "57",
+          "grader": "PSA",
+          "grade": 8
+        },
+        "cert": "62330180",
+        "imageUrl": "https://img.test/crop5.jpg"
+      },
+      {
+        "id": "h-d6",
+        "key": {
+          "set": "1996 Topps Chrome Basketball",
+          "number": "138",
+          "grader": "SGC",
+          "grade": 9
+        },
+        "cert": "9921007",
+        "imageUrl": "https://img.test/crop6.jpg"
+      },
+      {
+        "id": "h-d7",
+        "key": {
+          "set": "2018 Panini Prizm Basketball",
+          "number": "280",
+          "grader": "PSA",
+          "grade": 10
+        },
+        "cert": "55012345",
+        "imageUrl": "https://img.test/crop7.jpg"
+      }
+    ],
+    "review": [
+      {
+        "detection": {
+          "id": "d8",
+          "grader": "PSA",
+          "certGuess": "5812",
+          "confidence": 0.58,
+          "cropUrl": "https://img.test/crop8.jpg",
+          "boundingBox": {
+            "x": 0.36,
+            "y": 0.05,
+            "w": 0.28,
+            "h": 0.42
+          }
+        },
+        "reason": "label was hard to read — tap to confirm"
+      },
+      {
+        "detection": {
+          "id": "d9",
+          "confidence": 0.44,
+          "cropUrl": "https://img.test/crop9.jpg",
+          "boundingBox": {
+            "x": 0.68,
+            "y": 0.05,
+            "w": 0.28,
+            "h": 0.42
+          }
+        },
+        "reason": "couldn't read the label — tap to confirm"
+      },
+      {
+        "detection": {
+          "id": "d10",
+          "confidence": 0.39,
+          "cropUrl": "https://img.test/crop10.jpg",
+          "boundingBox": {
+            "x": 0.04,
+            "y": 0.52,
+            "w": 0.28,
+            "h": 0.42
+          }
+        },
+        "reason": "couldn't read the label — tap to confirm"
+      }
+    ],
+    "valued": [
+      {
+        "holding": {
+          "id": "h-d1",
+          "key": {
+            "set": "2018 Panini Prizm Basketball",
+            "number": "280",
+            "variant": "Silver",
+            "grader": "PSA",
+            "grade": 10
+          },
+          "cert": "58127634",
+          "imageUrl": "https://img.test/crop1.jpg"
+        },
+        "fairValue": {
+          "point": 299.90153846153845,
+          "lower": 290.40103766153845,
+          "upper": 309.40203926153845,
+          "confidence": 0.810416240309955,
+          "liquidity": 0.40384615384615385,
+          "compCount": 21,
+          "dispersion": 5,
+          "shrunk": false
+        },
+        "trendPct": 0.05580323889184856
+      },
+      {
+        "holding": {
+          "id": "h-d2",
+          "key": {
+            "set": "2018 Panini Prizm Basketball",
+            "number": "280",
+            "variant": "Silver",
+            "grader": "PSA",
+            "grade": 9
+          },
+          "cert": "58127699",
+          "imageUrl": "https://img.test/crop2.jpg"
+        },
+        "fairValue": {
+          "point": 299.90153846153845,
+          "lower": 290.40103766153845,
+          "upper": 309.40203926153845,
+          "confidence": 0.810416240309955,
+          "liquidity": 0.40384615384615385,
+          "compCount": 21,
+          "dispersion": 5,
+          "shrunk": false
+        },
+        "trendPct": 0.05580323889184856
+      },
+      {
+        "holding": {
+          "id": "h-d3",
+          "key": {
+            "set": "2003-04 Topps Chrome Basketball",
+            "number": "111",
+            "grader": "CGC",
+            "grade": 9.5
+          },
+          "cert": "4012887001",
+          "imageUrl": "https://img.test/crop3.jpg"
+        },
+        "fairValue": {
+          "point": 1120.456081081081,
+          "lower": 1077.7038274810811,
+          "upper": 1163.208334681081,
+          "confidence": 0.6513961058399795,
+          "liquidity": 0.10666666666666667,
+          "compCount": 8,
+          "dispersion": 22.5,
+          "shrunk": false
+        },
+        "trendPct": -0.012842263872041652
+      },
+      {
+        "holding": {
+          "id": "h-d4",
+          "key": {
+            "set": "Base Set",
+            "number": "4",
+            "variant": "1st Edition",
+            "grader": "PSA",
+            "grade": 9
+          },
+          "cert": "71045511",
+          "imageUrl": "https://img.test/crop4.jpg"
+        }
+      },
+      {
+        "holding": {
+          "id": "h-d5",
+          "key": {
+            "set": "1986 Fleer Basketball",
+            "number": "57",
+            "grader": "PSA",
+            "grade": 8
+          },
+          "cert": "62330180",
+          "imageUrl": "https://img.test/crop5.jpg"
+        }
+      },
+      {
+        "holding": {
+          "id": "h-d6",
+          "key": {
+            "set": "1996 Topps Chrome Basketball",
+            "number": "138",
+            "grader": "SGC",
+            "grade": 9
+          },
+          "cert": "9921007",
+          "imageUrl": "https://img.test/crop6.jpg"
+        }
+      },
+      {
+        "holding": {
+          "id": "h-d7",
+          "key": {
+            "set": "2018 Panini Prizm Basketball",
+            "number": "280",
+            "grader": "PSA",
+            "grade": 10
+          },
+          "cert": "55012345",
+          "imageUrl": "https://img.test/crop7.jpg"
+        },
+        "fairValue": {
+          "point": 299.90153846153845,
+          "lower": 290.40103766153845,
+          "upper": 309.40203926153845,
+          "confidence": 0.810416240309955,
+          "liquidity": 0.40384615384615385,
+          "compCount": 21,
+          "dispersion": 5,
+          "shrunk": false
+        },
+        "trendPct": 0.05580323889184856
       }
     ]
   }

@@ -9,6 +9,7 @@
       "@trdr/market-data": ["packages/providers/market-data/src/index.ts"],
       "@trdr/grading": ["packages/providers/grading/src/index.ts"],
       "@trdr/identity": ["packages/providers/identity/src/index.ts"],
+      "@trdr/vision": ["packages/providers/vision/src/index.ts"],
       "@trdr/ingestion": ["services/ingestion/src/index.ts"]
     }
   },
