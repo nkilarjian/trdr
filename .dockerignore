@@ -1,0 +1,10 @@
+# Keep the build context lean and let the container do a clean install.
+**/node_modules
+apps/mobile
+**/dist
+**/.git
+**/*.log
+_apilog.txt
+_clerkenv.json
+_ce.json
+_env.json
