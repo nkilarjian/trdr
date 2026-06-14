@@ -2,6 +2,7 @@
 // (mock by default). Auth, portfolio, watchlists, eBay OAuth handoff, and push
 // registration are stubbed with TODOs and land in Phase 1.
 
+import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import { DefaultIdentityResolver } from "@trdr/identity";
 import {
@@ -20,6 +21,14 @@ import {
   type WatchedKey,
 } from "@trdr/ingestion";
 import type { Grader } from "@trdr/core";
+
+// Load repo-root .env so credentials are picked up without exporting by hand
+// (Node 20.12+/22+ built-in). Must run before selectProviders reads process.env.
+try {
+  (process as unknown as { loadEnvFile?: (p: string) => void }).loadEnvFile?.(fileURLToPath(new URL("../../../.env", import.meta.url)));
+} catch {
+  /* no .env — runs on mocks */
+}
 
 const providers = selectProviders();
 const resolver = new DefaultIdentityResolver({
