@@ -50,7 +50,7 @@ async function main() {
   );
 
   banner("3. Scan active listings → signal gate → alerts");
-  const listings = await market.searchActive({});
+  const listings = await market.searchActive({ key: resolution.key });
   const alerts: Alert[] = [];
   for (const listing of listings) {
     const sellerRisk = scoreSeller(listing.seller, {

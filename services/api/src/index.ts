@@ -4,7 +4,16 @@
 
 import Fastify from "fastify";
 import { DefaultIdentityResolver } from "@trdr/identity";
-import { buildFeed, DEMO_FEED_PARAMS, scanOnce, selectProviders, type WatchedKey } from "@trdr/ingestion";
+import {
+  buildFeed,
+  DEMO_FEED_PARAMS,
+  DEMO_WISHLIST,
+  DEMO_WISHLIST_OPTS,
+  scanOnce,
+  scanWishlist,
+  selectProviders,
+  type WatchedKey,
+} from "@trdr/ingestion";
 import type { Grader } from "@trdr/core";
 
 const providers = selectProviders();
@@ -42,8 +51,15 @@ app.get<{ Querystring: { grader?: string; cert?: string } }>("/api/v1/feed", asy
   return buildFeed(providers, { ...DEMO_FEED_PARAMS, grader, cert });
 });
 
+// Wishlist: the auto-organized wish tree + background-scan hits "worth checking
+// out" (good value or cool finds). Phase 1 serves the seeded demo wishlist; the
+// POST variant (user-built wishlist) lands with persistence.
+app.get("/api/v1/wishlist", async () => {
+  return scanWishlist(providers, DEMO_WISHLIST, DEMO_WISHLIST_OPTS);
+});
+
 // TODO(Phase 1): POST /auth, eBay OAuth handoff (encrypt tokens at rest),
-//   /portfolio, /watchlists, /devices (push registration).
+//   /portfolio, /watchlists (persist user wishlist), /devices (push registration).
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

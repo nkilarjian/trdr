@@ -117,5 +117,271 @@
         "type": "auction-close"
       }
     ]
+  },
+  "wishlist": {
+    "tree": {
+      "id": "root",
+      "level": "root",
+      "label": "Wishlist",
+      "spec": {},
+      "children": [
+        {
+          "id": "root/category:Basketball",
+          "level": "category",
+          "label": "Basketball",
+          "spec": {
+            "category": "Basketball"
+          },
+          "children": [
+            {
+              "id": "root/category:Basketball/subject:Luka Dončić",
+              "level": "subject",
+              "label": "Luka Dončić",
+              "spec": {
+                "category": "Basketball",
+                "subject": "Luka Dončić"
+              },
+              "children": [
+                {
+                  "id": "root/category:Basketball/subject:Luka Dončić/set:2018 Panini Prizm Basketball",
+                  "level": "set",
+                  "label": "2018 Panini Prizm Basketball",
+                  "spec": {
+                    "category": "Basketball",
+                    "subject": "Luka Dončić",
+                    "set": "2018 Panini Prizm Basketball"
+                  },
+                  "children": [
+                    {
+                      "id": "root/category:Basketball/subject:Luka Dončić/set:2018 Panini Prizm Basketball/card:#280 Silver",
+                      "level": "card",
+                      "label": "#280 Silver",
+                      "spec": {
+                        "category": "Basketball",
+                        "subject": "Luka Dončić",
+                        "set": "2018 Panini Prizm Basketball",
+                        "number": "280",
+                        "variant": "Silver"
+                      },
+                      "children": [
+                        {
+                          "id": "root/category:Basketball/subject:Luka Dončić/set:2018 Panini Prizm Basketball/card:#280 Silver/grade:PSA 10+",
+                          "level": "grade",
+                          "label": "PSA 10+",
+                          "spec": {
+                            "category": "Basketball",
+                            "subject": "Luka Dončić",
+                            "set": "2018 Panini Prizm Basketball",
+                            "number": "280",
+                            "variant": "Silver",
+                            "grader": "PSA",
+                            "minGrade": 10,
+                            "maxPrice": 250
+                          },
+                          "children": [],
+                          "wishId": "w-luka-10"
+                        },
+                        {
+                          "id": "root/category:Basketball/subject:Luka Dončić/set:2018 Panini Prizm Basketball/card:#280 Silver/grade:PSA 9+",
+                          "level": "grade",
+                          "label": "PSA 9+",
+                          "spec": {
+                            "category": "Basketball",
+                            "subject": "Luka Dončić",
+                            "set": "2018 Panini Prizm Basketball",
+                            "number": "280",
+                            "variant": "Silver",
+                            "grader": "PSA",
+                            "minGrade": 9
+                          },
+                          "children": [],
+                          "wishId": "w-luka-9"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "root/category:Basketball/subject:LeBron James",
+              "level": "subject",
+              "label": "LeBron James",
+              "spec": {
+                "category": "Basketball",
+                "subject": "LeBron James"
+              },
+              "children": [
+                {
+                  "id": "root/category:Basketball/subject:LeBron James/set:2003-04 Topps Chrome Basketball",
+                  "level": "set",
+                  "label": "2003-04 Topps Chrome Basketball",
+                  "spec": {
+                    "category": "Basketball",
+                    "subject": "LeBron James",
+                    "set": "2003-04 Topps Chrome Basketball"
+                  },
+                  "children": [
+                    {
+                      "id": "root/category:Basketball/subject:LeBron James/set:2003-04 Topps Chrome Basketball/card:#111",
+                      "level": "card",
+                      "label": "#111",
+                      "spec": {
+                        "category": "Basketball",
+                        "subject": "LeBron James",
+                        "set": "2003-04 Topps Chrome Basketball",
+                        "number": "111"
+                      },
+                      "children": [
+                        {
+                          "id": "root/category:Basketball/subject:LeBron James/set:2003-04 Topps Chrome Basketball/card:#111/grade:CGC 9.5+",
+                          "level": "grade",
+                          "label": "CGC 9.5+",
+                          "spec": {
+                            "category": "Basketball",
+                            "subject": "LeBron James",
+                            "set": "2003-04 Topps Chrome Basketball",
+                            "number": "111",
+                            "grader": "CGC",
+                            "minGrade": 9.5,
+                            "maxPrice": 4000
+                          },
+                          "children": [],
+                          "wishId": "w-lebron"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "root/category:Pokémon",
+          "level": "category",
+          "label": "Pokémon",
+          "spec": {
+            "category": "Pokémon"
+          },
+          "children": [
+            {
+              "id": "root/category:Pokémon/subject:Charizard",
+              "level": "subject",
+              "label": "Charizard",
+              "spec": {
+                "category": "Pokémon",
+                "subject": "Charizard",
+                "maxPrice": 1500
+              },
+              "children": [],
+              "wishId": "w-charizard"
+            }
+          ]
+        }
+      ]
+    },
+    "hits": [
+      {
+        "wishId": "w-charizard",
+        "itemId": "v-charizard-auction",
+        "title": "Pokemon Base Set Charizard #4 1st Edition PSA 9",
+        "currentPrice": 400,
+        "buyingOption": "AUCTION",
+        "endTime": "2026-06-13T15:00:00Z",
+        "value": 0,
+        "cool": 0.918,
+        "interest": 0.918,
+        "tags": [
+          "low pop",
+          "sleeper",
+          "rare variant",
+          "under budget"
+        ],
+        "deepLink": "https://www.ebay.com/itm/v-charizard-auction?mkcid=1&campid=DEMO-EPN"
+      },
+      {
+        "wishId": "w-luka-10",
+        "itemId": "v-underpriced-auction",
+        "title": "2018 Prizm Luka Doncic #280 Silver PSA 10 GEM MINT",
+        "currentPrice": 110,
+        "buyingOption": "AUCTION",
+        "endTime": "2026-06-13T20:00:00Z",
+        "value": 0.8310917724083913,
+        "cool": 0.4556,
+        "interest": 0.8310917724083913,
+        "tags": [
+          "good value",
+          "gem grade",
+          "rare variant",
+          "under budget"
+        ],
+        "fairBand": {
+          "lower": 290.40103766153845,
+          "point": 299.90153846153845,
+          "upper": 309.40203926153845
+        },
+        "deepLink": "https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&campid=DEMO-EPN"
+      },
+      {
+        "wishId": "w-lebron",
+        "itemId": "v-lebron-bin",
+        "title": "2003-04 Topps Chrome LeBron James #111 RC CGC 9.5",
+        "currentPrice": 850,
+        "buyingOption": "BIN",
+        "value": 0.030717512668236416,
+        "cool": 0.678,
+        "interest": 0.678,
+        "tags": [
+          "low pop",
+          "under budget"
+        ],
+        "fairBand": {
+          "lower": 1077.7038274810811,
+          "point": 1120.456081081081,
+          "upper": 1163.208334681081
+        },
+        "deepLink": "https://www.ebay.com/itm/v-lebron-bin?mkcid=1&campid=DEMO-EPN"
+      }
+    ],
+    "specs": [
+      {
+        "id": "w-luka-10",
+        "category": "Basketball",
+        "subject": "Luka Dončić",
+        "set": "2018 Panini Prizm Basketball",
+        "number": "280",
+        "variant": "Silver",
+        "grader": "PSA",
+        "minGrade": 10,
+        "maxPrice": 250
+      },
+      {
+        "id": "w-luka-9",
+        "category": "Basketball",
+        "subject": "Luka Dončić",
+        "set": "2018 Panini Prizm Basketball",
+        "number": "280",
+        "variant": "Silver",
+        "grader": "PSA",
+        "minGrade": 9
+      },
+      {
+        "id": "w-lebron",
+        "category": "Basketball",
+        "subject": "LeBron James",
+        "set": "2003-04 Topps Chrome Basketball",
+        "number": "111",
+        "grader": "CGC",
+        "minGrade": 9.5,
+        "maxPrice": 4000
+      },
+      {
+        "id": "w-charizard",
+        "category": "Pokémon",
+        "subject": "Charizard",
+        "maxPrice": 1500
+      }
+    ]
   }
 }

@@ -35,6 +35,9 @@ const CERTS: Record<string, CertRecord> = {
 const POPS: Record<string, PopReport> = {
   "PSA|2018 Panini Prizm Basketball|280|Silver|10": { atGrade: 412, higher: 0, total: 5230 },
   "PSA|2018 Panini Prizm Basketball|280|Silver|9": { atGrade: 1840, higher: 412, total: 5230 },
+  // low-pop cards that drive "cool find" serendipity
+  "CGC|2003-04 Topps Chrome Basketball|111||9.5": { atGrade: 60, higher: 8, total: 920 },
+  "PSA|Base Set|4|1st Edition|9": { atGrade: 110, higher: 300, total: 4100 },
 };
 
 function popKey(k: CanonicalCardKey): string {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { alertVM, fairValueVM } from "./src/trdr-ui";
+import { buildWishTree, parseWish, type WishNode, type WishSpec } from "./src/trdr-wishlist";
 import type { Alert } from "@trdr/core";
 import snapshot from "./assets/data.json";
 
@@ -13,7 +14,24 @@ type Passport = {
   recent: { date: string; price: number; type: string }[];
 };
 
-type Feed = { alerts: Alert[]; passport: Passport };
+type WishHit = {
+  wishId: string;
+  itemId: string;
+  title: string;
+  currentPrice: number;
+  buyingOption: "AUCTION" | "BIN";
+  endTime?: string;
+  value: number;
+  cool: number;
+  interest: number;
+  tags: string[];
+  fairBand?: { lower: number; point: number; upper: number };
+  deepLink: string;
+};
+
+type Wishlist = { specs: WishSpec[]; tree: WishNode; hits: WishHit[] };
+
+type Feed = { alerts: Alert[]; passport: Passport; wishlist: Wishlist };
 
 const FALLBACK = snapshot as unknown as Feed;
 
@@ -37,9 +55,12 @@ const C = {
 const tone = (t: string) => (t === "high" || t === "ok" ? C.green : t === "medium" || t === "caution" ? C.amber : C.red);
 
 export default function App() {
-  const [tab, setTab] = useState<"alerts" | "passport">("alerts");
+  const [tab, setTab] = useState<"alerts" | "passport" | "wishlist">("alerts");
   const [feed, setFeed] = useState<Feed>(FALLBACK);
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
+  // wishlist specs are user-owned (the tree re-groups locally as they add wishes)
+  const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
+  const [hits, setHits] = useState<WishHit[]>(FALLBACK.wishlist.hits);
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -55,10 +76,19 @@ export default function App() {
       .catch(() => {
         /* unreachable API → keep the bundled snapshot */
       });
+    fetch(`${API_BASE}/api/v1/wishlist`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((w: Wishlist) => {
+        if (active) setHits(w.hits);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
   }, []);
+
+  const addWish = (text: string) => setSpecs((prev) => [...prev, parseWish(text, `w-${Date.now()}`)]);
+  const tree = buildWishTree(specs);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -76,10 +106,13 @@ export default function App() {
       <View style={styles.tabs}>
         <TabButton label={`Alerts · ${feed.alerts.length}`} active={tab === "alerts"} onPress={() => setTab("alerts")} />
         <TabButton label="Passport" active={tab === "passport"} onPress={() => setTab("passport")} />
+        <TabButton label={`Wishlist · ${hits.length}`} active={tab === "wishlist"} onPress={() => setTab("wishlist")} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
-        {tab === "alerts" ? <AlertsFeed alerts={feed.alerts} /> : <PassportScreen passport={feed.passport} />}
+        {tab === "alerts" && <AlertsFeed alerts={feed.alerts} />}
+        {tab === "passport" && <PassportScreen passport={feed.passport} />}
+        {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} />}
         <Text style={styles.foot}>
           {source === "live" ? "Live from the model API" : "Bundled snapshot"} on mock data ·{" "}
           {feed.passport.fairValue.compCount} clean comps
@@ -228,6 +261,114 @@ function BigStat({ value, label }: { value: string; label: string }) {
   );
 }
 
+function WishlistScreen({ tree, hits, onAdd }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void }) {
+  const [text, setText] = useState("");
+  const submit = () => {
+    const t = text.trim();
+    if (t) {
+      onAdd(t);
+      setText("");
+    }
+  };
+  return (
+    <View>
+      <Text style={styles.colH}>Your wishlist</Text>
+      <View style={styles.addRow}>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          onSubmitEditing={submit}
+          returnKeyType="done"
+          placeholder="Add a card or player… e.g. Jordan Fleer PSA 9"
+          placeholderTextColor={C.muted}
+          style={styles.input}
+        />
+        <Pressable style={styles.addBtn} onPress={submit}>
+          <Text style={styles.addBtnText}>Add</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.hint}>Add what you want — broad ("any Charizard") or specific. It organizes itself.</Text>
+
+      <View style={styles.treeBox}>
+        {tree.children.map((c) => (
+          <TreeNodeView key={c.id} node={c} depth={0} hits={hits} />
+        ))}
+      </View>
+
+      <Text style={[styles.colH, { marginTop: 22 }]}>Worth checking out · {hits.length}</Text>
+      {hits.length === 0 ? (
+        <Text style={styles.hint}>The background scan hasn't surfaced anything yet.</Text>
+      ) : (
+        hits.map((h) => <HitCard key={h.itemId} hit={h} />)
+      )}
+    </View>
+  );
+}
+
+function TreeNodeView({ node, depth, hits }: { node: WishNode; depth: number; hits: WishHit[] }) {
+  const isLeaf = !!node.wishId;
+  const n = isLeaf ? hits.filter((h) => h.wishId === node.wishId).length : 0;
+  return (
+    <View>
+      <View style={[styles.treeRow, { paddingLeft: 4 + depth * 16 }]}>
+        <Text style={[styles.treeLabel, isLeaf ? styles.treeLeaf : null]}>
+          {isLeaf ? "◆ " : "› "}
+          {node.label}
+        </Text>
+        {isLeaf && n > 0 ? (
+          <View style={styles.hitBadge}>
+            <Text style={styles.hitBadgeText}>{n}</Text>
+          </View>
+        ) : null}
+      </View>
+      {node.children.map((c) => (
+        <TreeNodeView key={c.id} node={c} depth={depth + 1} hits={hits} />
+      ))}
+    </View>
+  );
+}
+
+function tagColor(t: string): string {
+  if (t === "good value") return C.green;
+  if (t === "over budget") return C.red;
+  if (t === "under budget") return C.muted;
+  return C.accent; // low pop / sleeper / gem grade / rare variant
+}
+
+function HitCard({ hit }: { hit: WishHit }) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.alertTop}>
+        <View style={[styles.badge, { backgroundColor: hit.buyingOption === "AUCTION" ? "#16314f" : "#13301f" }]}>
+          <Text style={[styles.badgeText, { color: hit.buyingOption === "AUCTION" ? C.accent : "#5ec06f" }]}>
+            {hit.buyingOption}
+          </Text>
+        </View>
+        <Text style={styles.alertTitle} numberOfLines={1}>
+          {hit.title}
+        </Text>
+        <Text style={styles.price}>${hit.currentPrice.toLocaleString()}</Text>
+      </View>
+      <View style={styles.tagRow}>
+        {hit.tags.map((t) => (
+          <View key={t} style={[styles.tag, { borderColor: tagColor(t) + "66" }]}>
+            <Text style={[styles.tagText, { color: tagColor(t) }]}>{t}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.row}>
+        <Stat label="interest" value={`${Math.round(hit.interest * 100)}%`} color={C.accent} />
+        {hit.fairBand ? (
+          <Stat label="fair band" value={`$${Math.round(hit.fairBand.lower)} – $${Math.round(hit.fairBand.upper)}`} />
+        ) : null}
+      </View>
+      <Pressable onPress={() => Linking.openURL(hit.deepLink)}>
+        <Text style={styles.cta}>Open on eBay →</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, flexDirection: "row", alignItems: "baseline", gap: 10 },
@@ -284,4 +425,20 @@ const styles = StyleSheet.create({
   histCell: { color: C.ink, fontSize: 12 },
   ppFoot: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 14 },
   foot: { color: C.muted, fontSize: 11, textAlign: "center", marginTop: 18, marginBottom: 8 },
+
+  addRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  input: { flex: 1, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, color: C.ink, fontSize: 13 },
+  addBtn: { backgroundColor: C.accent, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 10 },
+  addBtnText: { color: "#04122b", fontWeight: "700", fontSize: 13 },
+  hint: { color: C.muted, fontSize: 11, marginTop: 8, lineHeight: 15 },
+  treeBox: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 6, marginTop: 12 },
+  treeRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
+  treeLabel: { color: C.muted, fontSize: 13 },
+  treeLeaf: { color: C.ink, fontWeight: "600" },
+  hitBadge: { marginLeft: 8, backgroundColor: "rgba(116,177,240,.15)", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1 },
+  hitBadgeText: { color: C.accent, fontSize: 10, fontWeight: "700" },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
+  tag: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
+  tagText: { fontSize: 11 },
+  price: { color: C.ink, fontSize: 14, fontWeight: "800" },
 });

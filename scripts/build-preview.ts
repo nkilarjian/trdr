@@ -32,7 +32,7 @@ async function buildData() {
   const fairValue = computeFairValue({ comps, now: NOW, resolutionConfidence: resolution.confidence, prior: { point: 300, strength: 0.6 } });
   const pop = await grading.getPopulation(resolution.key);
 
-  const listings = await market.searchActive({});
+  const listings = await market.searchActive({ key: resolution.key });
   const alerts: Alert[] = [];
   for (const listing of listings) {
     const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
