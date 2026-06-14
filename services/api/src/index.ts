@@ -49,7 +49,15 @@ const app = Fastify({ logger: true });
 // before listen, so no top-level await needed.)
 app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });
 
-app.get("/health", async () => ({ ok: true, providers: process.env.TRDR_PROVIDERS ?? "mock" }));
+// Capability report — which providers are backed by real credentials vs mocks.
+// The app reads this to only surface real features (e.g. photo-scan needs vision)
+// and to label values "live" vs "estimate" honestly.
+const capabilities = {
+  market: process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET ? "ebay" : "mock",
+  vision: process.env.VISION_BACKEND === "claude" && process.env.ANTHROPIC_API_KEY ? "claude" : "mock",
+  grading: process.env.PSA_API_TOKEN || process.env.CGC_API_TOKEN || process.env.SGC_API_TOKEN || process.env.BGS_API_TOKEN ? "real" : "mock",
+};
+app.get("/health", async () => ({ ok: true, providers: capabilities }));
 
 // 5c — manual cert door
 app.get<{ Params: { grader: string; cert: string } }>("/api/v1/resolve/cert/:grader/:cert", async (req) => {

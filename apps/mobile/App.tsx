@@ -123,6 +123,9 @@ function parseHolding(text: string, id: string): Holding {
 export default function App() {
   const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "passport">("alerts");
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
+  // What the backend can actually do (real creds vs mocks) — drives honest
+  // labelling and hides features that aren't really wired (e.g. photo-scan).
+  const [caps, setCaps] = useState<{ market?: string; vision?: string; grading?: string }>({});
   // Your wishlist drives everything (deals + wishlist + the watched cards).
   const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
   const [alerts, setAlerts] = useState<Alert[]>(FALLBACK.alerts);
@@ -187,6 +190,17 @@ export default function App() {
         /* unreachable API → cards stay unvalued (shown as —) */
       });
   };
+
+  // Ask the backend what's real (eBay/vision connected yet?) so the UI stays honest.
+  useEffect(() => {
+    if (!API_BASE) return;
+    fetch(`${API_BASE}/health`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { providers?: { market?: string; vision?: string; grading?: string } } | null) => {
+        if (d?.providers) setCaps(d.providers);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -277,12 +291,17 @@ export default function App() {
     { key: "passport", label: "Card", icon: "card-outline" },
   ];
 
+  // Real eBay market data vs model estimates; real vision backend vs none.
+  const marketReal = !!caps.market && caps.market !== "mock";
+  const visionReal = !!caps.vision && caps.vision !== "mock";
+
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
       {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} />}
       {tab === "library" && (
         <LibraryScreen
           holdings={holdings}
+          canScan={visionReal}
           scan={FALLBACK.scan}
           onAddScanned={addScanned}
           onAddHolding={addHolding}
@@ -294,7 +313,7 @@ export default function App() {
       {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} pro={pro} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
-        {source === "live" ? "Live from your wishlist" : "Demo data"} · {deviceLabel} layout
+        {source === "live" ? (marketReal ? "Live eBay prices" : "Estimated values") : "Demo data"} · {deviceLabel} layout
         {pro ? ` · ${passport.fairValue.compCount} clean comps` : ""}
       </Text>
     </View>
@@ -315,7 +334,7 @@ export default function App() {
         </Pressable>
         {source === "live" ? (
           <View style={[styles.srcChip, styles.srcLive]}>
-            <Text style={[styles.srcText, { color: C.green }]}>live</Text>
+            <Text style={[styles.srcText, { color: marketReal ? C.green : C.muted }]}>{marketReal ? "live" : "est"}</Text>
           </View>
         ) : null}
       </View>
@@ -742,6 +761,7 @@ function pickImageWeb(): Promise<PickedImage | undefined> {
 
 function LibraryScreen({
   holdings,
+  canScan,
   scan: bundledScan,
   onAddScanned,
   onAddHolding,
@@ -750,6 +770,7 @@ function LibraryScreen({
   pro,
 }: {
   holdings: ValuedHolding[];
+  canScan: boolean;
   scan: Scan;
   onAddScanned: (v: ValuedHolding[]) => void;
   onAddHolding: (text: string) => void;
@@ -791,7 +812,8 @@ function LibraryScreen({
     if (img) runScan(img);
   };
 
-  const canScan = !!API_BASE; // real photo-scanning needs the vision backend
+  // canScan comes from the backend's capability report — only true when a real
+  // vision provider is connected, so we never show the demo scanner as if real.
   return (
     <View>
       <Text style={styles.colH}>Your library</Text>
