@@ -22,7 +22,14 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "name": "TRDR",
+      "shortName": "TRDR",
+      "themeColor": "#0b0e14",
+      "backgroundColor": "#0b0e14",
+      "display": "standalone",
+      "lang": "en",
+      "description": "Find great graded-card deals and know what your cards are worth."
     }
   }
 }
