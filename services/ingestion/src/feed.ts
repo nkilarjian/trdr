@@ -1,12 +1,14 @@
-// Single source of truth for the client "feed" (alerts + card passport).
-// Both the API (GET /api/v1/feed) and the snapshot generator (pnpm snapshot)
-// call this, so the live response and the offline fallback never drift.
+// Card valuation building blocks. valueCard() does the per-card work; alertsFrom
+// and passportFrom derive the client shapes. buildFeed (cert → one card) and
+// scanBoard (the user's wishlist → many cards) both reuse these, so the live API
+// and the offline snapshot never drift.
 
 import {
   buildAlert,
   computeFairValue,
   looksManipulated,
   scoreSeller,
+  type ActiveListing,
   type Alert,
   type CanonicalCardKey,
   type FairValue,
@@ -15,6 +17,8 @@ import {
 } from "@trdr/core";
 import { DefaultIdentityResolver } from "@trdr/identity";
 import type { Providers } from "./providers.js";
+
+const DAY = 86_400_000;
 
 export interface PassportView {
   key: CanonicalCardKey;
@@ -37,8 +41,58 @@ export interface FeedParams {
   priorPoint?: number;
   windowDays?: number;
   epnCampaignId?: string;
-  /** Decision clock; defaults to now. Pinned by callers for deterministic demos. */
   nowMs?: number;
+}
+
+export interface ValueOpts {
+  nowMs?: number;
+  windowDays?: number;
+  priorPoint?: number;
+  resolutionConfidence?: number;
+}
+
+export interface CardValuation {
+  key: CanonicalCardKey;
+  fairValue: FairValue;
+  listings: ActiveListing[];
+  pop: { atGrade: number; higher: number; total: number } | null;
+  recent: { date: string; price: number; type: string }[];
+  imageUrl?: string;
+}
+
+/** Value one card: comps → fair value, its active listings, pop, recent sales. */
+export async function valueCard(providers: Providers, key: CanonicalCardKey, opts: ValueOpts = {}): Promise<CardValuation> {
+  const nowMs = opts.nowMs ?? Date.now();
+  const window = { fromIso: new Date(nowMs - (opts.windowDays ?? 180) * DAY).toISOString(), toIso: new Date(nowMs).toISOString() };
+  const comps = await providers.market.getSoldComps(key, window);
+  const fairValue = computeFairValue({
+    comps,
+    now: nowMs,
+    resolutionConfidence: opts.resolutionConfidence,
+    prior: opts.priorPoint ? { point: opts.priorPoint, strength: 0.6 } : undefined,
+  });
+  const pop = await providers.grading.getPopulation(key);
+  const listings = await providers.market.searchActive({ key });
+  const recent = [...comps]
+    .filter((c: SoldComp) => c.qty === 1 && !looksManipulated(c))
+    .sort((a: SoldComp, b: SoldComp) => Date.parse(b.soldAt) - Date.parse(a.soldAt))
+    .slice(0, 6)
+    .map((c) => ({ date: c.soldAt.slice(0, 10), price: c.soldPrice, type: c.saleType }));
+  return { key, fairValue, listings, pop, recent, imageUrl: listings[0]?.slabPhotoUrls[0] };
+}
+
+export function alertsFrom(v: CardValuation, opts: { epnCampaignId?: string; nowMs?: number }): Alert[] {
+  const out: Alert[] = [];
+  for (const listing of v.listings) {
+    const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
+    const a = buildAlert({ listing, key: v.key, fairValue: v.fairValue, sellerRisk, epnCampaignId: opts.epnCampaignId, nowMs: opts.nowMs });
+    if (a) out.push(a);
+  }
+  return out;
+}
+
+export function passportFrom(v: CardValuation, cert: string | null): PassportView {
+  return { key: v.key, cert, imageUrl: v.imageUrl, fairValue: v.fairValue, pop: v.pop, recent: v.recent };
 }
 
 export async function buildFeed(providers: Providers, params: FeedParams): Promise<Feed> {
@@ -47,42 +101,17 @@ export async function buildFeed(providers: Providers, params: FeedParams): Promi
     grading: providers.grading,
     listingSource: { getListing: (id) => providers.market.getListing(id) },
   });
-
   const resolution = await resolver.fromCert(params.grader, params.cert);
-  const window = {
-    fromIso: new Date(nowMs - (params.windowDays ?? 180) * 86_400_000).toISOString(),
-    toIso: new Date(nowMs).toISOString(),
-  };
-  const comps = await providers.market.getSoldComps(resolution.key, window);
-
-  const fairValue: FairValue = computeFairValue({
-    comps,
-    now: nowMs,
+  const v = await valueCard(providers, resolution.key, {
+    nowMs,
+    windowDays: params.windowDays,
+    priorPoint: params.priorPoint,
     resolutionConfidence: resolution.confidence,
-    prior: params.priorPoint ? { point: params.priorPoint, strength: 0.6 } : undefined,
   });
-
-  const pop = await providers.grading.getPopulation(resolution.key);
-
-  const listings = await providers.market.searchActive({ key: resolution.key });
-  const alerts: Alert[] = [];
-  for (const listing of listings) {
-    const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
-    const alert = buildAlert({ listing, key: resolution.key, fairValue, sellerRisk, epnCampaignId: params.epnCampaignId, nowMs });
-    if (alert) alerts.push(alert);
-  }
-  const imageUrl = listings[0]?.slabPhotoUrls[0];
-
-  const recent = [...comps]
-    .filter((c: SoldComp) => c.qty === 1 && !looksManipulated(c))
-    .sort((a: SoldComp, b: SoldComp) => Date.parse(b.soldAt) - Date.parse(a.soldAt))
-    .slice(0, 6)
-    .map((c) => ({ date: c.soldAt.slice(0, 10), price: c.soldPrice, type: c.saleType }));
-
   return {
     generatedAt: new Date(nowMs).toISOString(),
-    alerts,
-    passport: { key: resolution.key, cert: resolution.cert ?? null, imageUrl, fairValue, pop, recent },
+    alerts: alertsFrom(v, { epnCampaignId: params.epnCampaignId, nowMs }),
+    passport: passportFrom(v, resolution.cert ?? null),
   };
 }
 

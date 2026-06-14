@@ -14,13 +14,16 @@ import {
   DEMO_WISHLIST,
   DEMO_WISHLIST_OPTS,
   LibraryStore,
+  scanBoard,
   scanOnce,
   scanWishlist,
   selectProviders,
   valueLibrary,
+  WatchlistStore,
+  watchlistPath,
   type WatchedKey,
 } from "@trdr/ingestion";
-import type { Grader } from "@trdr/core";
+import type { Grader, WishSpec } from "@trdr/core";
 
 // Load repo-root .env so credentials are picked up without exporting by hand
 // (Node 20.12+/22+ built-in). Must run before selectProviders reads process.env.
@@ -36,6 +39,7 @@ const resolver = new DefaultIdentityResolver({
   listingSource: { getListing: (id) => providers.market.getListing(id) },
 });
 const library = new LibraryStore(DEMO_LIBRARY);
+const watchlist = new WatchlistStore(watchlistPath());
 
 const app = Fastify({ logger: true });
 
@@ -66,11 +70,18 @@ app.get<{ Querystring: { grader?: string; cert?: string } }>("/api/v1/feed", asy
   return buildFeed(providers, { ...DEMO_FEED_PARAMS, grader, cert });
 });
 
-// Wishlist: the auto-organized wish tree + background-scan hits "worth checking
-// out" (good value or cool finds). Phase 1 serves the seeded demo wishlist; the
-// POST variant (user-built wishlist) lands with persistence.
+// Wishlist (demo, seeded): the auto-organized tree + "worth checking out" hits.
 app.get("/api/v1/wishlist", async () => {
   return scanWishlist(providers, DEMO_WISHLIST, DEMO_WISHLIST_OPTS);
+});
+
+// Board: everything driven by the USER's wishlist — deals + wishlist + passport.
+// The posted wishlist is persisted as the watchlist so accumulation tracks the
+// same cards. Empty body falls back to the demo wishlist.
+app.post<{ Body: { specs?: WishSpec[] } }>("/api/v1/board", async (req) => {
+  const specs = req.body?.specs?.length ? req.body.specs : DEMO_WISHLIST;
+  if (req.body?.specs?.length) watchlist.save(specs);
+  return scanBoard(providers, specs, { epnCampaignId: process.env.EBAY_EPN_CAMPAIGN_ID ?? "DEMO-EPN" });
 });
 
 // Library: the cards the user owns, valued by the model.

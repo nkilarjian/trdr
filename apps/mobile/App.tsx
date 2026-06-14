@@ -107,10 +107,11 @@ function friendlySeller(label: string): string {
 
 export default function App() {
   const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "passport">("alerts");
-  const [feed, setFeed] = useState<Feed>(FALLBACK);
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
-  // wishlist specs are user-owned (the tree re-groups locally as they add wishes)
+  // Your wishlist drives everything (deals + wishlist + the watched cards).
   const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
+  const [alerts, setAlerts] = useState<Alert[]>(FALLBACK.alerts);
+  const [passport, setPassport] = useState<Passport>(FALLBACK.passport);
   const [hits, setHits] = useState<WishHit[]>(FALLBACK.wishlist.hits);
   const [holdings, setHoldings] = useState<ValuedHolding[]>(FALLBACK.library.holdings);
   const [pro, setPro] = useState(false); // Pro mode reveals the quant terms
@@ -128,38 +129,56 @@ export default function App() {
     AsyncStorage.setItem("trdr.onboarded", "1").catch(() => {});
   };
 
-  useEffect(() => {
+  // Scan the user's wishlist live → deals + wishlist hits + a passport card.
+  const refreshBoard = (currentSpecs: WishSpec[]) => {
     if (!API_BASE) return;
-    let active = true;
-    fetch(`${API_BASE}/api/v1/feed`)
+    fetch(`${API_BASE}/api/v1/board`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ specs: currentSpecs }),
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((json: Feed) => {
-        if (active) {
-          setFeed(json);
-          setSource("live");
-        }
+      .then((b: { alerts: Alert[]; wishlist: { hits: WishHit[] }; passport: Passport | null }) => {
+        setAlerts(b.alerts);
+        setHits(b.wishlist.hits);
+        if (b.passport) setPassport(b.passport);
+        setSource("live");
       })
       .catch(() => {
         /* unreachable API → keep the bundled snapshot */
       });
-    fetch(`${API_BASE}/api/v1/wishlist`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((w: Wishlist) => {
-        if (active) setHits(w.hits);
+  };
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem("trdr.wishlist")
+      .then((v) => {
+        const saved = v ? (JSON.parse(v) as WishSpec[]) : null;
+        const s = saved && saved.length ? saved : FALLBACK.wishlist.specs;
+        if (active) setSpecs(s);
+        refreshBoard(s);
       })
-      .catch(() => {});
-    fetch(`${API_BASE}/api/v1/library`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((l: { holdings: ValuedHolding[] }) => {
-        if (active) setHoldings(l.holdings);
-      })
-      .catch(() => {});
+      .catch(() => refreshBoard(FALLBACK.wishlist.specs));
+    if (API_BASE) {
+      fetch(`${API_BASE}/api/v1/library`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((l: { holdings: ValuedHolding[] }) => {
+          if (active) setHoldings(l.holdings);
+        })
+        .catch(() => {});
+    }
     return () => {
       active = false;
     };
   }, []);
 
-  const addWish = (text: string) => setSpecs((prev) => [...prev, parseWish(text, `w-${Date.now()}`)]);
+  const persistSpecs = (s: WishSpec[]) => AsyncStorage.setItem("trdr.wishlist", JSON.stringify(s)).catch(() => {});
+  const addWish = (text: string) => {
+    const next = [...specs, parseWish(text, `w-${Date.now()}`)];
+    setSpecs(next);
+    persistSpecs(next);
+    refreshBoard(next);
+  };
   const tree = buildWishTree(specs);
   const addScanned = (valued: ValuedHolding[]) =>
     setHoldings((prev) => {
@@ -175,7 +194,7 @@ export default function App() {
   const deviceLabel = Platform.OS === "web" ? "web" : kind === "tablet" ? "tablet" : "phone";
 
   const tabs: { key: typeof tab; label: string; icon: IconName }[] = [
-    { key: "alerts", label: `Deals · ${feed.alerts.length}`, icon: "pricetags-outline" },
+    { key: "alerts", label: `Deals · ${alerts.length}`, icon: "pricetags-outline" },
     { key: "library", label: `Library · ${holdings.length}`, icon: "albums-outline" },
     { key: "wishlist", label: `Wishlist · ${hits.length}`, icon: "heart-outline" },
     { key: "passport", label: "Card", icon: "card-outline" },
@@ -183,13 +202,13 @@ export default function App() {
 
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
-      {tab === "alerts" && <AlertsFeed alerts={feed.alerts} columns={columns} pro={pro} />}
-      {tab === "library" && <LibraryScreen holdings={holdings} scan={feed.scan} onAddScanned={addScanned} columns={columns} pro={pro} />}
+      {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} />}
+      {tab === "library" && <LibraryScreen holdings={holdings} scan={FALLBACK.scan} onAddScanned={addScanned} columns={columns} pro={pro} />}
       {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} pro={pro} />}
-      {tab === "passport" && <PassportScreen passport={feed.passport} pro={pro} />}
+      {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
-        {source === "live" ? "Live from the model" : "Demo data"} · {deviceLabel} layout
-        {pro ? ` · ${feed.passport.fairValue.compCount} clean comps` : ""}
+        {source === "live" ? "Live from your wishlist" : "Demo data"} · {deviceLabel} layout
+        {pro ? ` · ${passport.fairValue.compCount} clean comps` : ""}
       </Text>
     </View>
   );
