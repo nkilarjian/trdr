@@ -194,19 +194,29 @@ export default function App() {
   const tree = buildWishTree(specs);
 
   // Library — persisted on the phone (AsyncStorage = localStorage on web).
-  const saveHoldings = (h: ValuedHolding[]) => {
-    setHoldings(h);
-    AsyncStorage.setItem("trdr.library", JSON.stringify(h)).catch(() => {});
-  };
-  const addScanned = (valued: ValuedHolding[]) => {
-    const seen = new Set(holdings.map((v) => v.holding.id));
-    saveHoldings([...holdings, ...valued.filter((v) => !seen.has(v.holding.id))]);
-  };
+  // Functional updates so saves can't race a stale `holdings` closure.
+  const persistLib = (h: ValuedHolding[]) => AsyncStorage.setItem("trdr.library", JSON.stringify(h)).catch(() => {});
+  const addScanned = (valued: ValuedHolding[]) =>
+    setHoldings((prev) => {
+      const seen = new Set(prev.map((v) => v.holding.id));
+      const next = [...prev, ...valued.filter((v) => !seen.has(v.holding.id))];
+      persistLib(next);
+      return next;
+    });
   const addHolding = (text: string) => {
     if (!text.trim()) return;
-    saveHoldings([...holdings, { holding: parseHolding(text, `h-${Date.now()}`) }]);
+    setHoldings((prev) => {
+      const next = [...prev, { holding: parseHolding(text, `h-${Date.now()}`) }];
+      persistLib(next);
+      return next;
+    });
   };
-  const removeHolding = (id: string) => saveHoldings(holdings.filter((v) => v.holding.id !== id));
+  const removeHolding = (id: string) =>
+    setHoldings((prev) => {
+      const next = prev.filter((v) => v.holding.id !== id);
+      persistLib(next);
+      return next;
+    });
 
   // ── responsive: detect size live (updates on rotate/resize) and adapt ──
   const { width } = useWindowDimensions();
@@ -732,6 +742,7 @@ function LibraryScreen({
     if (img) runScan(img);
   };
 
+  const canScan = !!API_BASE; // real photo-scanning needs the vision backend
   return (
     <View>
       <Text style={styles.colH}>Your library</Text>
@@ -746,31 +757,15 @@ function LibraryScreen({
         </View>
       </View>
 
-      {isWeb ? (
-        <Pressable style={styles.scanBtn} onPress={upload}>
-          <Text style={styles.scanBtnText}>Upload a photo of your cards</Text>
-          <Text style={styles.scanBtnSub}>Pick an image — reads many cards from one picture</Text>
-        </Pressable>
-      ) : (
-        <View>
-          <Pressable style={styles.scanBtn} onPress={() => runScan(undefined)}>
-            <Text style={styles.scanBtnText}>Take a photo of your cards</Text>
-            <Text style={styles.scanBtnSub}>Reads many cards from one picture — no typing</Text>
-          </Pressable>
-          <Pressable style={styles.scanBtnAlt} onPress={() => runScan(undefined)}>
-            <Text style={styles.scanBtnAltText}>Upload from this device instead</Text>
-          </Pressable>
-        </View>
-      )}
-      <Text style={styles.hint}>Photo reads cards when the scanner's connected. Anytime, add one by hand below.</Text>
-
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 6, marginBottom: 10 }}>
+      <Text style={styles.libAddLabel}>Add a card</Text>
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
         <TextInput
           value={manual}
           onChangeText={setManual}
           onSubmitEditing={submitManual}
           returnKeyType="done"
-          placeholder="Add a card… e.g. 2018 Prizm Luka #280 PSA 10"
+          autoCapitalize="none"
+          placeholder="e.g. 2018 Prizm Luka #280 PSA 10"
           placeholderTextColor={C.muted}
           style={[styles.input, { flex: 1 }]}
         />
@@ -779,7 +774,15 @@ function LibraryScreen({
         </Pressable>
       </View>
 
-      {scanning ? (
+      {canScan ? (
+        <Pressable style={styles.scanBtnAlt} onPress={isWeb ? upload : () => runScan(undefined)}>
+          <Text style={styles.scanBtnAltText}>{isWeb ? "or upload a photo to read many at once" : "or take a photo to read many at once"}</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.hint}>Tip: photo scanning turns on once the scanner's connected — for now, add cards by hand.</Text>
+      )}
+
+      {canScan && scanning ? (
         <ScanFlow
           scan={scan}
           photoUri={photoUri}
@@ -792,7 +795,7 @@ function LibraryScreen({
       ) : null}
 
       {holdings.length === 0 ? (
-        <Text style={styles.hint}>Your library is empty — add a card above. It's saved on this device.</Text>
+        <Text style={[styles.hint, { marginTop: 12 }]}>Your library is empty — add a card above. It's saved on this device.</Text>
       ) : (
         <Grid columns={columns}>
           {holdings.map((v) => (
@@ -987,6 +990,7 @@ const styles = StyleSheet.create({
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
   libSumV: { color: C.ink, fontSize: 20, fontWeight: "800" },
   libSumL: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
+  libAddLabel: { color: C.ink, fontSize: 14, fontWeight: "600", marginBottom: 6 },
   scanBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, alignItems: "center" },
   scanBtnText: { color: "#04122b", fontSize: 16, fontWeight: "700" },
   scanBtnSub: { color: "#0a2547", fontSize: 12, marginTop: 2 },
