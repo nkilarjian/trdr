@@ -191,6 +191,11 @@ function SignInModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           )}
 
           {err ? <Text style={a.err}>{err}</Text> : null}
+          {/* Clerk mounts its invisible Smart-CAPTCHA (bot protection) into this
+              node during signUp.create. On RN-Web, nativeID becomes the DOM id,
+              so Clerk finds #clerk-captcha and the challenge can run; without it,
+              sign-up fails with captcha_missing_token. */}
+          <View nativeID="clerk-captcha" style={a.captcha} />
           <Pressable onPress={close}>
             <Text style={a.cancel}>Cancel</Text>
           </Pressable>
@@ -269,5 +274,6 @@ const a = StyleSheet.create({
   primary: { backgroundColor: "#74b1f0", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 12 },
   primaryText: { color: "#04122b", fontSize: 15, fontWeight: "700" },
   err: { color: "#f85149", fontSize: 13, marginTop: 12 },
+  captcha: { alignItems: "center", marginTop: 8 },
   cancel: { color: "#8b97a8", fontSize: 14, textAlign: "center", marginTop: 16 },
 });
