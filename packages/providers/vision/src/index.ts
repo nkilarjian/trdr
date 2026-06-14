@@ -22,10 +22,21 @@ export interface BoundingBox {
   h: number;
 }
 
+// The card identity read straight off the slab label (graded labels print all
+// of this). When present, the pipeline can build a holding WITHOUT a grading-API
+// cert lookup — so photo-scan works with only a vision backend connected.
+export interface DetectedCard {
+  set?: string; // descriptive line incl. year/brand/player, e.g. "2018 Panini Prizm Luka Dončić"
+  number?: string; // card number within the set
+  variant?: string; // parallel / insert / variety, if any
+  grade?: number; // numeric grade (BGS allows .5)
+}
+
 export interface DetectedSlab {
   id: string;
   grader?: Grader; // read from the label, if legible
   certGuess?: string; // read cert number, if legible
+  card?: DetectedCard; // card identity read off the label, if legible
   confidence: number; // [0,1] — how confident the read is
   cropUrl?: string; // cropped image of just this card
   boundingBox?: BoundingBox;

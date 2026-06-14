@@ -27,6 +27,18 @@ export async function bulkIngest(providers: Providers, image: ImageInput): Promi
   const review: ReviewItem[] = [];
 
   for (const d of slabs) {
+    // 1) Prefer the identity read straight off the label — needs no grading API,
+    //    so scan works with just a vision backend connected.
+    if (d.confidence >= 0.7 && d.grader && d.card?.set && d.card.number != null && d.card.grade != null) {
+      added.push({
+        id: `h-${d.id}`,
+        key: { set: d.card.set, number: String(d.card.number), variant: d.card.variant, grader: d.grader, grade: d.card.grade },
+        cert: d.certGuess,
+        imageUrl: d.cropUrl,
+      });
+      continue;
+    }
+    // 2) Fall back to resolving the cert via the grading provider (when wired).
     if (d.confidence >= 0.8 && d.grader && d.certGuess) {
       const rec = await providers.grading.lookupCert(d.grader, d.certGuess);
       if (rec) {
@@ -35,7 +47,7 @@ export async function bulkIngest(providers: Providers, image: ImageInput): Promi
       }
       review.push({ detection: d, reason: "couldn't match that cert — tap to confirm" });
     } else {
-      review.push({ detection: d, reason: d.certGuess ? "label was hard to read — tap to confirm" : "couldn't read the label — tap to confirm" });
+      review.push({ detection: d, reason: d.certGuess || d.card?.set ? "label was hard to read — tap to confirm" : "couldn't read the label — tap to confirm" });
     }
   }
   return { detected: slabs.length, added, review };

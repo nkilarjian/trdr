@@ -18,18 +18,26 @@ export interface RealVisionConfig {
 
 const PROMPT = [
   "This is a photo of one or more GRADED trading-card slabs (PSA, CGC, SGC, or BGS).",
-  "For every slab you can see, read its grading label and return:",
+  "For every slab you can see, READ ITS PRINTED LABEL and return:",
   '- grader: one of "PSA" | "CGC" | "SGC" | "BGS"',
   "- cert: the printed certification / serial number (digits), or omit if unreadable",
-  "- confidence: 0..1, how sure you are of the read",
+  '- set: the descriptive line as printed — year, brand/set and player/subject, e.g. "2018 Panini Prizm Luka Doncic" (omit if unreadable)',
+  '- number: the card number, e.g. "280" (digits/letters as printed; omit the # sign)',
+  '- variant: any parallel/insert/variety printed, e.g. "Silver", "Refractor" (omit if none)',
+  "- grade: the numeric grade as a number, e.g. 10, 9.5 (omit if unreadable)",
+  "- confidence: 0..1, how sure you are of the overall read",
   "- boundingBox: {x,y,w,h} as fractions 0..1 of the image",
-  'Respond with ONLY a JSON array, e.g. [{"grader":"PSA","cert":"58127634","confidence":0.95,"boundingBox":{"x":0.1,"y":0.1,"w":0.2,"h":0.3}}].',
-  "Include glare/blurred slabs too, with low confidence and no cert. No prose, JSON only.",
+  'Respond with ONLY a JSON array, e.g. [{"grader":"PSA","cert":"58127634","set":"2018 Panini Prizm Luka Doncic","number":"280","variant":"Silver","grade":10,"confidence":0.95,"boundingBox":{"x":0.1,"y":0.1,"w":0.2,"h":0.3}}].',
+  "Include glare/blurred slabs too, with low confidence and whatever fields you can read. No prose, JSON only.",
 ].join("\n");
 
 interface RawSlab {
   grader?: string;
   cert?: string;
+  set?: string;
+  number?: string | number;
+  variant?: string;
+  grade?: number | string;
   confidence?: number;
   boundingBox?: { x: number; y: number; w: number; h: number };
 }
@@ -56,7 +64,9 @@ export class RealVisionProvider implements VisionProvider {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: this.config.model ?? "claude-opus-4-8",
+        // Reading a printed slab label is OCR-grade work — Haiku is fast + cheap
+        // and plenty accurate. Override with VISION_MODEL for tougher photos.
+        model: this.config.model ?? "claude-haiku-4-5",
         max_tokens: 2048,
         messages: [
           {
@@ -77,6 +87,7 @@ export class RealVisionProvider implements VisionProvider {
       id: `v${i}`,
       grader: normalizeGrader(s.grader),
       certGuess: s.cert,
+      card: toCard(s),
       confidence: clamp01(typeof s.confidence === "number" ? s.confidence : 0.5),
       boundingBox: s.boundingBox,
     }));
@@ -106,6 +117,15 @@ function parseSlabs(text: string): RawSlab[] {
   } catch {
     return [];
   }
+}
+
+function toCard(s: RawSlab): { set?: string; number?: string; variant?: string; grade?: number } | undefined {
+  const set = typeof s.set === "string" && s.set.trim() ? s.set.trim() : undefined;
+  const number = s.number != null && String(s.number).trim() ? String(s.number).replace(/^#/, "").trim() : undefined;
+  const variant = typeof s.variant === "string" && s.variant.trim() ? s.variant.trim() : undefined;
+  const grade = typeof s.grade === "number" ? s.grade : typeof s.grade === "string" && s.grade.trim() ? Number(s.grade) : undefined;
+  if (!set && number == null && grade == null && !variant) return undefined;
+  return { set, number, variant, grade: Number.isFinite(grade) ? grade : undefined };
 }
 
 function normalizeGrader(g?: string): Grader | undefined {
