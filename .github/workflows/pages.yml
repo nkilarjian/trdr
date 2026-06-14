@@ -42,6 +42,7 @@ jobs:
           npm ci
           node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.experiments={...(j.expo.experiments||{}),baseUrl:'/trdr'};fs.writeFileSync('app.json',JSON.stringify(j,null,2));"
           npx expo export -p web
+          node -e "const fs=require('fs');let h=fs.readFileSync('dist/index.html','utf8');if(!h.includes('no-store')){h=h.replace('<head>','<head><meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\"><meta http-equiv=\"Pragma\" content=\"no-cache\"><meta http-equiv=\"Expires\" content=\"0\">');fs.writeFileSync('dist/index.html',h);}"
           touch dist/.nojekyll
 
       - uses: actions/configure-pages@v5
