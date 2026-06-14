@@ -1,5 +1,5 @@
-import { Children, useEffect, useState, type ReactNode } from "react";
-import { Image, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Children, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Image, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { alertVM, fairValueVM } from "./src/trdr-ui";
 import { buildWishTree, parseWish, type WishNode, type WishSpec } from "./src/trdr-wishlist";
@@ -74,6 +74,32 @@ const C = {
 
 const tone = (t: string) => (t === "high" || t === "ok" ? C.green : t === "medium" || t === "caution" ? C.amber : C.red);
 
+// ── Dynamic Type: an app-level text scale every <Text> respects. Native OS font
+// scaling still applies on top (bounded), and this control works on web too. ──
+const ScaleCtx = createContext(1);
+function Text(props: any) {
+  const scale = useContext(ScaleCtx);
+  const flat = StyleSheet.flatten(props.style) || {};
+  const base = typeof flat.fontSize === "number" ? flat.fontSize : 15;
+  return <RNText maxFontSizeMultiplier={1.6} {...props} style={[props.style, { fontSize: base * scale }]} />;
+}
+
+// ── plain-language helpers (Pro mode reveals the quant terms) ──
+function plain<T>(pro: boolean, simpleVal: T, proVal: T): T {
+  return pro ? proVal : simpleVal;
+}
+function sureness(conf: number): { dots: string; label: string; tone: string } {
+  const n = conf >= 0.8 ? 3 : conf >= 0.6 ? 2 : 1;
+  return { dots: "●".repeat(n) + "○".repeat(3 - n), label: n === 3 ? "High" : n === 2 ? "Medium" : "Low", tone: n === 3 ? "high" : n === 2 ? "medium" : "low" };
+}
+function friendlySeller(label: string): string {
+  if (label.includes("under-market")) return "Sells below market — worth a look";
+  if (label.includes("manipulation") || label.includes("erratic")) return "Be careful with this seller";
+  if (label.includes("often high")) return "Tends to price high";
+  if (label.includes("limited")) return "New-ish seller";
+  return "Seller looks fine";
+}
+
 export default function App() {
   const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "passport">("alerts");
   const [feed, setFeed] = useState<Feed>(FALLBACK);
@@ -82,6 +108,8 @@ export default function App() {
   const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
   const [hits, setHits] = useState<WishHit[]>(FALLBACK.wishlist.hits);
   const [holdings, setHoldings] = useState<ValuedHolding[]>(FALLBACK.library.holdings);
+  const [pro, setPro] = useState(false); // Pro mode reveals the quant terms
+  const [textScale, setTextScale] = useState(1); // Dynamic Type: app-level text size
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -138,56 +166,69 @@ export default function App() {
 
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
-      {tab === "alerts" && <AlertsFeed alerts={feed.alerts} columns={columns} />}
-      {tab === "library" && <LibraryScreen holdings={holdings} scan={feed.scan} onAddScanned={addScanned} columns={columns} />}
-      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} />}
-      {tab === "passport" && <PassportScreen passport={feed.passport} />}
+      {tab === "alerts" && <AlertsFeed alerts={feed.alerts} columns={columns} pro={pro} />}
+      {tab === "library" && <LibraryScreen holdings={holdings} scan={feed.scan} onAddScanned={addScanned} columns={columns} pro={pro} />}
+      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} pro={pro} />}
+      {tab === "passport" && <PassportScreen passport={feed.passport} pro={pro} />}
       <Text style={styles.foot}>
-        {source === "live" ? "Live from the model API" : "Bundled snapshot"} · {deviceLabel} layout · {feed.passport.fairValue.compCount} clean comps
+        {source === "live" ? "Live from the model" : "Demo data"} · {deviceLabel} layout
+        {pro ? ` · ${feed.passport.fairValue.compCount} clean comps` : ""}
       </Text>
     </View>
   );
 
+  const cycleSize = () => setTextScale((s) => (s >= 1.3 ? 1 : s >= 1.15 ? 1.3 : 1.15));
   const header = (
     <View style={styles.header}>
       <Text style={styles.brand}>TRDR</Text>
-      {kind !== "phone" ? <Text style={styles.sub}>graded-card mispricing terminal</Text> : null}
-      <View style={[styles.srcChip, styles.srcSnap]}>
-        <Text style={[styles.srcText, { color: C.muted }]}>{deviceLabel}</Text>
-      </View>
-      <View style={[styles.srcChip, source === "live" ? styles.srcLive : styles.srcSnap]}>
-        <Text style={[styles.srcText, { color: source === "live" ? C.green : C.muted }]}>{source === "live" ? "live" : "snapshot"}</Text>
+      {kind !== "phone" ? <Text style={styles.sub}>{plain(pro, "card deals & values", "graded-card mispricing terminal")}</Text> : null}
+      <View style={styles.headerControls}>
+        <Pressable onPress={cycleSize} style={styles.ctrlChip} accessibilityLabel="Text size">
+          <Text style={[styles.ctrlText, { fontSize: textScale > 1 ? 15 : 13 }]}>A</Text>
+        </Pressable>
+        <Pressable onPress={() => setPro((p) => !p)} style={[styles.ctrlChip, pro && styles.ctrlChipOn]}>
+          <Text style={[styles.ctrlText, { color: pro ? "#04122b" : C.muted }]}>{pro ? "Pro" : "Simple"}</Text>
+        </Pressable>
+        {source === "live" ? (
+          <View style={[styles.srcChip, styles.srcLive]}>
+            <Text style={[styles.srcText, { color: C.green }]}>live</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 
-  // Wide screens (iPad landscape / desktop): a left sidebar nav + centered content.
-  if (kind === "wide") {
-    return (
+  const shell = (inner: ReactNode) => (
+    <ScaleCtx.Provider value={textScale}>
       <SafeAreaView style={styles.safe}>
         <StatusBar style="light" />
         {header}
-        <View style={{ flexDirection: "row", flex: 1 }}>
-          <View style={styles.sidebar}>
-            {tabs.map((t) => (
-              <Pressable key={t.key} style={[styles.sideTab, tab === t.key && styles.sideTabActive]} onPress={() => setTab(t.key)}>
-                <Text style={[styles.sideTabText, tab === t.key && styles.sideTabTextActive]}>{t.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }}>
-            {body}
-          </ScrollView>
-        </View>
+        {inner}
       </SafeAreaView>
+    </ScaleCtx.Provider>
+  );
+
+  // Wide screens (iPad landscape / desktop): a left sidebar nav + centered content.
+  if (kind === "wide") {
+    return shell(
+      <View style={{ flexDirection: "row", flex: 1 }}>
+        <View style={styles.sidebar}>
+          {tabs.map((t) => (
+            <Pressable key={t.key} style={[styles.sideTab, tab === t.key && styles.sideTabActive]} onPress={() => setTab(t.key)}>
+              <Text style={[styles.sideTabText, tab === t.key && styles.sideTabTextActive]}>{t.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }}>
+          {body}
+        </ScrollView>
+      </View>,
     );
   }
 
   // Phone / tablet: top tabs + content.
-  return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar style="light" />
-      {header}
+  return shell(
+    <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
         {tabs.map((t) => (
           <TabButton key={t.key} label={t.label} active={tab === t.key} onPress={() => setTab(t.key)} />
@@ -196,7 +237,7 @@ export default function App() {
       <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 8 }}>
         {body}
       </ScrollView>
-    </SafeAreaView>
+    </>,
   );
 }
 
@@ -220,13 +261,14 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
   );
 }
 
-function AlertsFeed({ alerts, columns }: { alerts: Alert[]; columns: number }) {
+function AlertsFeed({ alerts, columns, pro }: { alerts: Alert[]; columns: number; pro: boolean }) {
   return (
     <View>
-      <Text style={styles.colH}>Underpriced alerts</Text>
+      <Text style={styles.colH}>{plain(pro, "Deals for you", "Underpriced alerts")}</Text>
       <Grid columns={columns}>
       {alerts.map((a) => {
         const vm = alertVM(a);
+        const sure = sureness(a.fairValue.confidence);
         return (
           <View key={a.itemId} style={styles.card}>
             <View style={styles.alertTop}>
@@ -239,20 +281,24 @@ function AlertsFeed({ alerts, columns }: { alerts: Alert[]; columns: number }) {
               <Text style={styles.alertTitle} numberOfLines={1}>
                 {vm.title}
               </Text>
-              <Text style={styles.edge}>{vm.edge} edge</Text>
+              <Text style={styles.edge}>{plain(pro, `Save ${vm.edge.replace("+", "")}`, `${vm.edge} edge`)}</Text>
             </View>
             <View style={styles.row}>
-              <Stat label={a.buyingOption === "AUCTION" ? "predicted close" : "price now"} value={vm.predictedClose} />
-              <Stat label="fair band" value={vm.band.range} />
-              <Stat label="confidence" value={vm.band.confidence} color={tone(vm.band.confidenceTone)} />
+              <Stat label={plain(pro, a.buyingOption === "AUCTION" ? "likely final" : "price now", a.buyingOption === "AUCTION" ? "predicted close" : "price now")} value={vm.predictedClose} />
+              <Stat label={plain(pro, "what it's worth", "fair value band")} value={vm.band.range} />
+              {pro ? (
+                <Stat label="confidence" value={vm.band.confidence} color={tone(vm.band.confidenceTone)} />
+              ) : (
+                <Stat label="how sure" value={`${sure.dots}  ${sure.label}`} color={tone(sure.tone)} />
+              )}
             </View>
             <View style={styles.row}>
               <View style={[styles.chip, { borderColor: tone(vm.sellerTone) + "66" }]}>
-                <Text style={[styles.chipText, { color: tone(vm.sellerTone) }]}>seller: {vm.sellerChip}</Text>
+                <Text style={[styles.chipText, { color: tone(vm.sellerTone) }]}>{plain(pro, friendlySeller(vm.sellerChip), `seller: ${vm.sellerChip}`)}</Text>
               </View>
             </View>
             <Pressable onPress={() => Linking.openURL(vm.deepLink)}>
-              <Text style={styles.cta}>Open on eBay →</Text>
+              <Text style={styles.cta}>{plain(pro, "See it on eBay →", "Open on eBay →")}</Text>
             </Pressable>
           </View>
         );
@@ -262,15 +308,18 @@ function AlertsFeed({ alerts, columns }: { alerts: Alert[]; columns: number }) {
   );
 }
 
-function PassportScreen({ passport: p }: { passport: Passport }) {
+function PassportScreen({ passport: p, pro }: { passport: Passport; pro: boolean }) {
   const fv = fairValueVM(p.fairValue as never);
   const span = p.fairValue.upper - p.fairValue.lower || 1;
   const pointPct = ((p.fairValue.point - p.fairValue.lower) / span) * 100;
   const confTone = tone(fv.confidenceTone);
+  const sure = sureness(p.fairValue.confidence);
+  const liq = p.fairValue.liquidity;
+  const sellsOften = liq >= 0.5 ? "often" : liq > 0.15 ? "sometimes" : "rarely";
 
   return (
     <View>
-      <Text style={styles.colH}>Card passport</Text>
+      <Text style={styles.colH}>{plain(pro, "About this card", "Card passport")}</Text>
       <View style={styles.passport}>
         <View style={styles.ppHeader}>
           <CardImage uri={p.imageUrl} label={`${p.key.grader} ${p.key.grade}`} size={76} />
@@ -293,7 +342,7 @@ function PassportScreen({ passport: p }: { passport: Passport }) {
           </View>
         </View>
         <Text style={styles.ppPoint}>
-          {fv.point} <Text style={styles.ppPointSmall}>fair value</Text>
+          {fv.point} <Text style={styles.ppPointSmall}>{plain(pro, "what it's worth", "fair value")}</Text>
         </Text>
 
         <View style={styles.band}>
@@ -301,7 +350,7 @@ function PassportScreen({ passport: p }: { passport: Passport }) {
         </View>
         <View style={styles.bandLbls}>
           <Text style={styles.bandLbl}>{fv.range.split(" – ")[0]}</Text>
-          <Text style={styles.bandLbl}>80% band</Text>
+          <Text style={styles.bandLbl}>{plain(pro, "what it's worth", "80% band")}</Text>
           <Text style={styles.bandLbl}>{fv.range.split(" – ")[1]}</Text>
         </View>
 
@@ -309,14 +358,14 @@ function PassportScreen({ passport: p }: { passport: Passport }) {
           <View style={[styles.meterFill, { width: `${Math.round(p.fairValue.confidence * 100)}%`, backgroundColor: confTone }]} />
         </View>
         <View style={styles.bandLbls}>
-          <Text style={styles.bandLbl}>confidence</Text>
-          <Text style={[styles.bandLbl, { color: confTone }]}>{fv.confidence}</Text>
+          <Text style={styles.bandLbl}>{plain(pro, "how sure", "confidence")}</Text>
+          <Text style={[styles.bandLbl, { color: confTone }]}>{plain(pro, `${sure.dots}  ${sure.label}`, fv.confidence)}</Text>
         </View>
 
         <View style={styles.stats}>
-          <BigStat value={`${p.fairValue.compCount}`} label="clean comps" />
-          <BigStat value={`${p.fairValue.liquidity.toFixed(2)}/day`} label="liquidity" />
-          <BigStat value={p.pop ? `${p.pop.atGrade}` : "—"} label="pop @ grade" />
+          <BigStat value={`${p.fairValue.compCount}`} label={plain(pro, "recent sales", "clean comps")} />
+          <BigStat value={plain(pro, sellsOften, `${liq.toFixed(2)}/day`)} label={plain(pro, "how often it sells", "liquidity")} />
+          <BigStat value={p.pop ? `${p.pop.atGrade}` : "—"} label={plain(pro, "how rare", "pop @ grade")} />
         </View>
 
         <View style={styles.histHead}>
@@ -333,8 +382,11 @@ function PassportScreen({ passport: p }: { passport: Passport }) {
         ))}
 
         <Text style={styles.ppFoot}>
-          Distribution, not a number. Band reflects sale dispersion; confidence reflects comp depth, tightness &
-          liquidity. Qualified copies segregated; lots, shill wins & relists dropped before estimating.
+          {plain(
+            pro,
+            "We estimate value from recent real sales, and only show deals we're confident about.",
+            "Distribution, not a number. Band reflects sale dispersion; confidence reflects comp depth, tightness & liquidity. Qualified copies segregated; lots, shill wins & relists dropped before estimating.",
+          )}
         </Text>
       </View>
     </View>
@@ -358,7 +410,7 @@ function BigStat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function WishlistScreen({ tree, hits, onAdd, columns }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void; columns: number }) {
+function WishlistScreen({ tree, hits, onAdd, columns, pro }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void; columns: number; pro: boolean }) {
   const [text, setText] = useState("");
   const submit = () => {
     const t = text.trim();
@@ -392,7 +444,7 @@ function WishlistScreen({ tree, hits, onAdd, columns }: { tree: WishNode; hits: 
         ))}
       </View>
 
-      <Text style={[styles.colH, { marginTop: 22 }]}>Worth checking out · {hits.length}</Text>
+      <Text style={[styles.colH, { marginTop: 22 }]}>{plain(pro, "Worth a look", "Worth checking out")} · {hits.length}</Text>
       {hits.length === 0 ? (
         <Text style={styles.hint}>The background scan hasn't surfaced anything yet.</Text>
       ) : (
@@ -500,7 +552,8 @@ function pickImageWeb(): Promise<string | undefined> {
   });
 }
 
-function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void; columns: number }) {
+function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns, pro }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void; columns: number; pro: boolean }) {
+  void pro;
   const [scanning, setScanning] = useState(false);
   const [scan, setScan] = useState<Scan>(bundledScan);
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
@@ -666,10 +719,14 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 8, flexDirection: "row", alignItems: "baseline", gap: 10 },
   brand: { color: C.ink, fontSize: 20, fontWeight: "700", letterSpacing: 2 },
   sub: { color: C.muted, fontSize: 12 },
-  srcChip: { marginLeft: "auto", borderWidth: 1, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
+  srcChip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   srcLive: { borderColor: "rgba(63,185,80,.4)" },
   srcSnap: { borderColor: C.line },
   srcText: { fontSize: 11 },
+  headerControls: { marginLeft: "auto", flexDirection: "row", alignItems: "center", gap: 6 },
+  ctrlChip: { borderWidth: 1, borderColor: C.line, borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4, minWidth: 34, alignItems: "center" },
+  ctrlChipOn: { backgroundColor: C.accent, borderColor: C.accent },
+  ctrlText: { color: C.muted, fontSize: 12, fontWeight: "700" },
   tabs: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   tab: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: C.line },
   tabActive: { backgroundColor: C.panel2, borderColor: C.accent },
