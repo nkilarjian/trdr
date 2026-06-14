@@ -5,6 +5,7 @@
 import {
   buildWishTree,
   computeFairValue,
+  ebayDeepLink,
   evaluateSignal,
   scoreInterest,
   type Grader,
@@ -111,7 +112,7 @@ export async function scanWishlist(
         tags: score.tags,
         fairBand,
         imageUrl: listing.slabPhotoUrls[0],
-        deepLink: deepLink(listing.itemId, opts.epnCampaignId),
+        deepLink: ebayDeepLink(listing.itemId, opts.epnCampaignId, listing.title),
       };
       // a listing can match several wishes — keep the strongest attribution
       const existing = byItem.get(listing.itemId);
@@ -127,11 +128,6 @@ function keyFromListing(l: ActiveListing): CanonicalCardKey | null {
   const s = l.itemSpecifics;
   if (!s.Set || !s.Number || !s.Grader || !s.Grade) return null;
   return { set: s.Set, number: s.Number, variant: s.Variant, grader: s.Grader as Grader, grade: Number(s.Grade) };
-}
-
-function deepLink(itemId: string, epnCampaignId?: string): string {
-  const base = `https://www.ebay.com/itm/${itemId}`;
-  return epnCampaignId ? `${base}?mkcid=1&campid=${epnCampaignId}` : base;
 }
 
 /** The seeded demo wishlist — flat wishes the auto-hierarchy organizes. */

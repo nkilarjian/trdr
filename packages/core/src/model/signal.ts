@@ -84,13 +84,21 @@ export function buildAlert(input: BuildAlertInput): Alert | null {
     buyingOption: input.listing.buyingOption,
     endTime: input.listing.endTime,
     imageUrl: input.listing.slabPhotoUrls[0],
-    deepLink: buildDeepLink(input.listing.itemId, input.epnCampaignId),
+    deepLink: ebayDeepLink(input.listing.itemId, input.epnCampaignId, input.listing.title),
   };
 }
 
-function buildDeepLink(itemId: string, epnCampaignId?: string): string {
-  const base = `https://www.ebay.com/itm/${itemId}`;
-  if (!epnCampaignId) return base;
-  // EPN affiliate wrapper for deep-link monetization (carry itemId through).
-  return `https://www.ebay.com/itm/${itemId}?mkcid=1&campid=${epnCampaignId}`;
+/**
+ * eBay deep link. Real listings open the item page (carrying the EPN affiliate
+ * params). Mock/synthetic item ids (demo data) have no real listing, so they
+ * fall back to an eBay SEARCH for the card so the link still goes somewhere real.
+ */
+export function ebayDeepLink(itemId: string, epnCampaignId?: string, searchQuery?: string): string {
+  const isPlaceholder = /^(v-|syn-)/.test(itemId);
+  const url =
+    isPlaceholder && searchQuery
+      ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchQuery)}`
+      : `https://www.ebay.com/itm/${itemId}`;
+  if (!epnCampaignId) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}mkcid=1&campid=${epnCampaignId}`;
 }

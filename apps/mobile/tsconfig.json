@@ -3,10 +3,19 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@trdr/ui": ["../../packages/ui/src/index.ts"],
-      "@trdr/core": ["../../packages/core/src/index.ts"],
-      "@trdr/config": ["../../packages/config/src/index.ts"]
+      "@trdr/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@trdr/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@trdr/config": [
+        "../../packages/config/src/index.ts"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ]
 }

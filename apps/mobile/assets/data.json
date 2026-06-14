@@ -30,7 +30,7 @@
       "buyingOption": "AUCTION",
       "endTime": "2026-06-13T20:00:00Z",
       "imageUrl": "https://img.test/v1.jpg",
-      "deepLink": "https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&campid=DEMO-EPN"
+      "deepLink": "https://www.ebay.com/sch/i.html?_nkw=2018%20Prizm%20Luka%20Doncic%20%23280%20Silver%20PSA%2010%20GEM%20MINT&mkcid=1&campid=DEMO-EPN"
     },
     {
       "itemId": "v-underpriced-bin",
@@ -60,7 +60,7 @@
       },
       "buyingOption": "BIN",
       "imageUrl": "https://img.test/v3.jpg",
-      "deepLink": "https://www.ebay.com/itm/v-underpriced-bin?mkcid=1&campid=DEMO-EPN"
+      "deepLink": "https://www.ebay.com/sch/i.html?_nkw=2018%20Prizm%20Luka%20Doncic%20%23280%20Silver%20PSA%2010%20%E2%80%94%20quick%20sale&mkcid=1&campid=DEMO-EPN"
     }
   ],
   "passport": {
@@ -302,7 +302,7 @@
           "under budget"
         ],
         "imageUrl": "https://img.test/v5.jpg",
-        "deepLink": "https://www.ebay.com/itm/v-charizard-auction?mkcid=1&campid=DEMO-EPN"
+        "deepLink": "https://www.ebay.com/sch/i.html?_nkw=Pokemon%20Base%20Set%20Charizard%20%234%201st%20Edition%20PSA%209&mkcid=1&campid=DEMO-EPN"
       },
       {
         "wishId": "w-luka-10",
@@ -326,7 +326,7 @@
           "upper": 309.40203926153845
         },
         "imageUrl": "https://img.test/v1.jpg",
-        "deepLink": "https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&campid=DEMO-EPN"
+        "deepLink": "https://www.ebay.com/sch/i.html?_nkw=2018%20Prizm%20Luka%20Doncic%20%23280%20Silver%20PSA%2010%20GEM%20MINT&mkcid=1&campid=DEMO-EPN"
       },
       {
         "wishId": "w-lebron",
@@ -347,7 +347,7 @@
           "upper": 1163.208334681081
         },
         "imageUrl": "https://img.test/v4.jpg",
-        "deepLink": "https://www.ebay.com/itm/v-lebron-bin?mkcid=1&campid=DEMO-EPN"
+        "deepLink": "https://www.ebay.com/sch/i.html?_nkw=2003-04%20Topps%20Chrome%20LeBron%20James%20%23111%20RC%20CGC%209.5&mkcid=1&campid=DEMO-EPN"
       }
     ],
     "specs": [
