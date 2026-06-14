@@ -32,6 +32,10 @@
       "display": "standalone",
       "lang": "en",
       "description": "Find great graded-card deals and know what your cards are worth."
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
   }
 }

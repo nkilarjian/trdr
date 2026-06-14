@@ -8,6 +8,7 @@ import { StatusBar } from "expo-status-bar";
 type IconName = keyof typeof Ionicons.glyphMap;
 import { alertVM, fairValueVM } from "./src/trdr-ui";
 import { buildWishTree, parseWish, type WishNode, type WishSpec } from "./src/trdr-wishlist";
+import { AuthButton, AuthGate, CloudSync } from "./src/auth";
 import type { Alert } from "@trdr/core";
 import snapshot from "./assets/data.json";
 
@@ -218,6 +219,21 @@ export default function App() {
       return next;
     });
 
+  // Cloud (Clerk) → load the account's saved wishlist/library into the app.
+  const onCloudLoad = (d: { specs?: unknown[]; holdings?: unknown[] }) => {
+    if (Array.isArray(d.specs)) {
+      const s = d.specs as WishSpec[];
+      setSpecs(s);
+      persistSpecs(s);
+      refreshBoard(s);
+    }
+    if (Array.isArray(d.holdings)) {
+      const h = d.holdings as ValuedHolding[];
+      setHoldings(h);
+      persistLib(h);
+    }
+  };
+
   // ── responsive: detect size live (updates on rotate/resize) and adapt ──
   const { width } = useWindowDimensions();
   const kind: "phone" | "tablet" | "wide" = width >= 1000 ? "wide" : width >= 700 ? "tablet" : "phone";
@@ -261,6 +277,7 @@ export default function App() {
       <Text style={styles.brand}>TRDR</Text>
       {kind !== "phone" ? <Text style={styles.sub}>{plain(pro, "card deals & values", "graded-card mispricing terminal")}</Text> : null}
       <View style={styles.headerControls}>
+        <AuthButton />
         <Pressable onPress={cycleSize} style={styles.ctrlChip} accessibilityLabel="Text size">
           <Text style={[styles.ctrlText, { fontSize: textScale > 1 ? 15 : 13 }]}>A</Text>
         </Pressable>
@@ -277,15 +294,18 @@ export default function App() {
   );
 
   const shell = (inner: ReactNode) => (
-    <SafeAreaProvider>
-      <ScaleCtx.Provider value={textScale}>
-        <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-          <StatusBar style="light" />
-          {header}
-          {inner}
-        </SafeAreaView>
-      </ScaleCtx.Provider>
-    </SafeAreaProvider>
+    <AuthGate>
+      <SafeAreaProvider>
+        <ScaleCtx.Provider value={textScale}>
+          <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+            <StatusBar style="light" />
+            <CloudSync specs={specs} holdings={holdings} onLoad={onCloudLoad} />
+            {header}
+            {inner}
+          </SafeAreaView>
+        </ScaleCtx.Provider>
+      </SafeAreaProvider>
+    </AuthGate>
   );
 
   // First run: a friendly welcome before the main app.
