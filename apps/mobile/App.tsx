@@ -262,18 +262,29 @@ export default function App() {
       return next;
     });
 
-  // Cloud (Clerk) → load the account's saved wishlist/library into the app.
+  // Cloud (Clerk) → MERGE the account's saved wishlist/library with what's on the
+  // device (union by id). Never replace: a freshly-added card must survive the
+  // cloud load even if the cloud copy is empty or arrives late after sign-in.
   const onCloudLoad = (d: { specs?: unknown[]; holdings?: unknown[] }) => {
     if (Array.isArray(d.specs)) {
-      const s = d.specs as WishSpec[];
-      setSpecs(s);
-      persistSpecs(s);
-      refreshBoard(s);
+      const cloud = d.specs as WishSpec[];
+      setSpecs((prev) => {
+        const seen = new Set(prev.map((s) => s.id));
+        const merged = [...prev, ...cloud.filter((s) => s?.id && !seen.has(s.id))];
+        persistSpecs(merged);
+        refreshBoard(merged);
+        return merged;
+      });
     }
     if (Array.isArray(d.holdings)) {
-      const h = d.holdings as ValuedHolding[];
-      setHoldings(h);
-      persistLib(h);
+      const cloud = d.holdings as ValuedHolding[];
+      setHoldings((prev) => {
+        const seen = new Set(prev.map((v) => v.holding.id));
+        const merged = [...prev, ...cloud.filter((v) => v?.holding?.id && !seen.has(v.holding.id))];
+        persistLib(merged);
+        revalueLibrary(merged);
+        return merged;
+      });
     }
   };
 
