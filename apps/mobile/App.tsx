@@ -105,6 +105,20 @@ function friendlySeller(label: string): string {
   return "Seller looks fine";
 }
 
+// Free-text → a Holding for the manual "add a card" path (works with no backend).
+function parseHolding(text: string, id: string): Holding {
+  const grader = (text.match(/\b(PSA|CGC|SGC|BGS)\b/i)?.[1] ?? "PSA").toUpperCase();
+  const grade = Number(text.match(/\b(10|9\.5|9|8\.5|8|7|6|5)\b/)?.[1] ?? 10);
+  const number = text.match(/#(\w+)/)?.[1] ?? "";
+  const set = text
+    .replace(/\b(PSA|CGC|SGC|BGS)\b/gi, "")
+    .replace(/#\w+/g, "")
+    .replace(/\b(10|9\.5|9|8\.5|8|7|6|5)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { id, key: { set: set || "Card", number, grader, grade } };
+}
+
 export default function App() {
   const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "passport">("alerts");
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
@@ -113,7 +127,7 @@ export default function App() {
   const [alerts, setAlerts] = useState<Alert[]>(FALLBACK.alerts);
   const [passport, setPassport] = useState<Passport>(FALLBACK.passport);
   const [hits, setHits] = useState<WishHit[]>(FALLBACK.wishlist.hits);
-  const [holdings, setHoldings] = useState<ValuedHolding[]>(FALLBACK.library.holdings);
+  const [holdings, setHoldings] = useState<ValuedHolding[]>([]); // your library — loaded from the phone
   const [pro, setPro] = useState(false); // Pro mode reveals the quant terms
   const [textScale, setTextScale] = useState(1); // Dynamic Type: app-level text size
   const [onboarded, setOnboarded] = useState<boolean | null>(null); // null = still loading
@@ -159,14 +173,12 @@ export default function App() {
         refreshBoard(s);
       })
       .catch(() => refreshBoard(FALLBACK.wishlist.specs));
-    if (API_BASE) {
-      fetch(`${API_BASE}/api/v1/library`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .then((l: { holdings: ValuedHolding[] }) => {
-          if (active) setHoldings(l.holdings);
-        })
-        .catch(() => {});
-    }
+    // your library is stored on the device
+    AsyncStorage.getItem("trdr.library")
+      .then((v) => {
+        if (active && v) setHoldings(JSON.parse(v) as ValuedHolding[]);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -180,11 +192,21 @@ export default function App() {
     refreshBoard(next);
   };
   const tree = buildWishTree(specs);
-  const addScanned = (valued: ValuedHolding[]) =>
-    setHoldings((prev) => {
-      const seen = new Set(prev.map((v) => v.holding.id));
-      return [...prev, ...valued.filter((v) => !seen.has(v.holding.id))];
-    });
+
+  // Library — persisted on the phone (AsyncStorage = localStorage on web).
+  const saveHoldings = (h: ValuedHolding[]) => {
+    setHoldings(h);
+    AsyncStorage.setItem("trdr.library", JSON.stringify(h)).catch(() => {});
+  };
+  const addScanned = (valued: ValuedHolding[]) => {
+    const seen = new Set(holdings.map((v) => v.holding.id));
+    saveHoldings([...holdings, ...valued.filter((v) => !seen.has(v.holding.id))]);
+  };
+  const addHolding = (text: string) => {
+    if (!text.trim()) return;
+    saveHoldings([...holdings, { holding: parseHolding(text, `h-${Date.now()}`) }]);
+  };
+  const removeHolding = (id: string) => saveHoldings(holdings.filter((v) => v.holding.id !== id));
 
   // ── responsive: detect size live (updates on rotate/resize) and adapt ──
   const { width } = useWindowDimensions();
@@ -203,7 +225,17 @@ export default function App() {
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
       {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} />}
-      {tab === "library" && <LibraryScreen holdings={holdings} scan={FALLBACK.scan} onAddScanned={addScanned} columns={columns} pro={pro} />}
+      {tab === "library" && (
+        <LibraryScreen
+          holdings={holdings}
+          scan={FALLBACK.scan}
+          onAddScanned={addScanned}
+          onAddHolding={addHolding}
+          onRemove={removeHolding}
+          columns={columns}
+          pro={pro}
+        />
+      )}
       {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} pro={pro} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
@@ -649,13 +681,34 @@ function pickImageWeb(): Promise<PickedImage | undefined> {
   });
 }
 
-function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns, pro }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void; columns: number; pro: boolean }) {
+function LibraryScreen({
+  holdings,
+  scan: bundledScan,
+  onAddScanned,
+  onAddHolding,
+  onRemove,
+  columns,
+  pro,
+}: {
+  holdings: ValuedHolding[];
+  scan: Scan;
+  onAddScanned: (v: ValuedHolding[]) => void;
+  onAddHolding: (text: string) => void;
+  onRemove: (id: string) => void;
+  columns: number;
+  pro: boolean;
+}) {
   void pro;
   const [scanning, setScanning] = useState(false);
   const [scan, setScan] = useState<Scan>(bundledScan);
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
+  const [manual, setManual] = useState("");
   const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
   const isWeb = Platform.OS === "web";
+  const submitManual = () => {
+    onAddHolding(manual);
+    setManual("");
+  };
 
   const runScan = async (img?: PickedImage) => {
     setPhotoUri(img?.previewUri);
@@ -709,11 +762,22 @@ function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns, pro
           </Pressable>
         </View>
       )}
-      <Text style={styles.hint}>
-        {isWeb
-          ? "On Windows/desktop, upload a photo — camera capture is on the phone app."
-          : "No camera? On a computer you upload a photo instead."}
-      </Text>
+      <Text style={styles.hint}>Photo reads cards when the scanner's connected. Anytime, add one by hand below.</Text>
+
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 6, marginBottom: 10 }}>
+        <TextInput
+          value={manual}
+          onChangeText={setManual}
+          onSubmitEditing={submitManual}
+          returnKeyType="done"
+          placeholder="Add a card… e.g. 2018 Prizm Luka #280 PSA 10"
+          placeholderTextColor={C.muted}
+          style={[styles.input, { flex: 1 }]}
+        />
+        <Pressable style={styles.addBtn} onPress={submitManual}>
+          <Text style={styles.addBtnText}>Add</Text>
+        </Pressable>
+      </View>
 
       {scanning ? (
         <ScanFlow
@@ -727,16 +791,20 @@ function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns, pro
         />
       ) : null}
 
-      <Grid columns={columns}>
-        {holdings.map((v) => (
-          <HoldingCard key={v.holding.id} v={v} />
-        ))}
-      </Grid>
+      {holdings.length === 0 ? (
+        <Text style={styles.hint}>Your library is empty — add a card above. It's saved on this device.</Text>
+      ) : (
+        <Grid columns={columns}>
+          {holdings.map((v) => (
+            <HoldingCard key={v.holding.id} v={v} onRemove={onRemove} />
+          ))}
+        </Grid>
+      )}
     </View>
   );
 }
 
-function HoldingCard({ v }: { v: ValuedHolding }) {
+function HoldingCard({ v, onRemove }: { v: ValuedHolding; onRemove?: (id: string) => void }) {
   const k = v.holding.key;
   const val = v.fairValue ? `$${Math.round(v.fairValue.point).toLocaleString()}` : "—";
   const up = (v.trendPct ?? 0) >= 0;
@@ -748,7 +816,8 @@ function HoldingCard({ v }: { v: ValuedHolding }) {
       <CardImage uri={v.holding.imageUrl} label={`${k.grader} ${k.grade}`} size={52} />
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={styles.holdingName} numberOfLines={1}>
-          {k.set} #{k.number}
+          {k.set}
+          {k.number ? ` #${k.number}` : ""}
           {k.variant ? ` ${k.variant}` : ""}
         </Text>
         <Text style={styles.holdingSub}>
@@ -761,6 +830,11 @@ function HoldingCard({ v }: { v: ValuedHolding }) {
         <Text style={styles.holdingVal}>{val}</Text>
         {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
       </View>
+      {onRemove ? (
+        <Pressable onPress={() => onRemove(v.holding.id)} hitSlop={10} style={styles.holdingRemove} accessibilityLabel="Remove card">
+          <Text style={styles.holdingRemoveText}>✕</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -926,6 +1000,8 @@ const styles = StyleSheet.create({
   holdingTrend: { fontSize: 12, fontWeight: "600", marginTop: 3 },
   holdingVal: { color: C.ink, fontSize: 16, fontWeight: "800" },
   holdingPL: { fontSize: 12, fontWeight: "600", marginTop: 3 },
+  holdingRemove: { marginLeft: 8, padding: 4 },
+  holdingRemoveText: { color: C.muted, fontSize: 14, fontWeight: "700" },
 
   scanBox: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.accent, borderRadius: 12, padding: 14, marginBottom: 14 },
   scanTitle: { color: C.ink, fontSize: 16, fontWeight: "700" },
