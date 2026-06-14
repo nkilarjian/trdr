@@ -606,17 +606,25 @@ function CardImage({ uri, label, size = 52 }: { uri?: string; label?: string; si
 // On web/desktop (Windows) there's no camera, so building the library means
 // picking an image file. On native, a camera/library picker supplies the uri
 // (expo-image-picker / expo-camera — wired in the native build).
-function pickImageWeb(): Promise<string | undefined> {
-  const doc = (globalThis as { document?: any }).document;
-  if (!doc) return Promise.resolve(undefined);
+type PickedImage = { previewUri: string; base64: string; mediaType: string };
+function pickImageWeb(): Promise<PickedImage | undefined> {
+  const g = globalThis as { document?: any; URL?: any; FileReader?: any };
+  if (!g.document) return Promise.resolve(undefined);
   return new Promise((resolve) => {
-    const input = doc.createElement("input");
+    const input = g.document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.onchange = () => {
       const file = input.files && input.files[0];
-      const u = (globalThis as { URL?: any }).URL;
-      resolve(file && u ? u.createObjectURL(file) : undefined);
+      if (!file) return resolve(undefined);
+      const previewUri = g.URL ? g.URL.createObjectURL(file) : "";
+      const reader = new g.FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result);
+        const m = dataUrl.match(/^data:(.*?);base64,(.*)$/);
+        resolve({ previewUri, base64: m ? m[2] : "", mediaType: m ? m[1] : "image/jpeg" });
+      };
+      reader.readAsDataURL(file);
     };
     input.click();
   });
@@ -630,14 +638,14 @@ function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns, pro
   const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
   const isWeb = Platform.OS === "web";
 
-  const runScan = async (uri?: string) => {
-    setPhotoUri(uri);
+  const runScan = async (img?: PickedImage) => {
+    setPhotoUri(img?.previewUri);
     if (API_BASE) {
       try {
         const r = await fetch(`${API_BASE}/api/v1/library/scan`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: { uri } }),
+          body: JSON.stringify({ image: img ? { base64: img.base64, mediaType: img.mediaType } : {} }),
         });
         if (r.ok) setScan((await r.json()) as Scan);
       } catch {
@@ -648,8 +656,8 @@ function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns, pro
   };
 
   const upload = async () => {
-    const uri = await pickImageWeb();
-    if (uri) runScan(uri);
+    const img = await pickImageWeb();
+    if (img) runScan(img);
   };
 
   return (

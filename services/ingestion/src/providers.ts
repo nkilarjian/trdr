@@ -13,6 +13,15 @@ export interface Providers {
 }
 
 export function selectProviders(env: NodeJS.ProcessEnv = process.env): Providers {
+  // Vision is chosen independently: a real Claude-vision backend can run even
+  // while market/grading stay on mocks (the grading-cert APIs are gated).
+  const vision =
+    env.VISION_BACKEND === "claude" && env.ANTHROPIC_API_KEY
+      ? new RealVisionProvider({ backend: "claude", anthropicApiKey: env.ANTHROPIC_API_KEY, model: env.VISION_MODEL })
+      : env.TRDR_PROVIDERS === "real"
+        ? new RealVisionProvider({ backend: env.VISION_BACKEND, endpointUrl: env.VISION_ENDPOINT_URL, apiKey: env.VISION_API_KEY })
+        : new MockVisionProvider();
+
   if (env.TRDR_PROVIDERS === "real") {
     return {
       market: new RealMarketDataProvider({
@@ -26,8 +35,8 @@ export function selectProviders(env: NodeJS.ProcessEnv = process.env): Providers
         sgcToken: env.SGC_API_TOKEN,
         bgsToken: env.BGS_API_TOKEN,
       }),
-      vision: new RealVisionProvider({ backend: env.VISION_BACKEND, endpointUrl: env.VISION_ENDPOINT_URL, apiKey: env.VISION_API_KEY }),
+      vision,
     };
   }
-  return { market: new MockMarketDataProvider(), grading: new MockGradingProvider(), vision: new MockVisionProvider() };
+  return { market: new MockMarketDataProvider(), grading: new MockGradingProvider(), vision };
 }

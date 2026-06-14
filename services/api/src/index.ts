@@ -71,7 +71,7 @@ app.get("/api/v1/library", async () => {
 
 // Snap your collection: read many slabs from one photo, auto-add the confident
 // reads to the library, and return the uncertain ones for quick confirmation.
-app.post<{ Body: { image?: { uri?: string; base64?: string } } }>("/api/v1/library/scan", async (req) => {
+app.post<{ Body: { image?: { uri?: string; base64?: string; mediaType?: string } } }>("/api/v1/library/scan", async (req) => {
   const result = await bulkIngest(providers, req.body?.image ?? {});
   library.addMany(result.added);
   const valued = await valueLibrary(providers, result.added, DEMO_LIBRARY_NOW);

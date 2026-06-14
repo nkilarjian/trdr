@@ -11,7 +11,8 @@ import type { Grader } from "@trdr/core";
 
 export interface ImageInput {
   uri?: string;
-  base64?: string;
+  base64?: string; // raw base64 (no data: prefix) — sent to a real backend
+  mediaType?: string; // e.g. "image/jpeg" | "image/png"
 }
 
 export interface BoundingBox {

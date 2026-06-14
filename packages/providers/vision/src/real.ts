@@ -1,23 +1,117 @@
-// Real VisionProvider — skeleton. GATED: needs an on-device or server vision model.
+// Real VisionProvider. Default backend is Claude's vision API: given a photo of
+// graded slabs, the model reads each slab's grader + cert number + an approximate
+// box and a confidence. The bulk-intake pipeline then resolves those certs via
+// the GradingProvider. Swap in an on-device detector (Apple Vision / ML Kit) or a
+// hosted model behind the same interface later.
 
+import type { Grader } from "@trdr/core";
 import type { DetectedSlab, ImageInput, VisionProvider } from "./index.js";
 
 export interface RealVisionConfig {
-  /** "apple-vision" (iOS), "mlkit" (Android), or a server endpoint URL. */
+  /** "claude" (default) — or "apple-vision" | "mlkit" | a custom endpoint. */
   backend?: string;
+  anthropicApiKey?: string;
+  model?: string;
   endpointUrl?: string;
   apiKey?: string;
+}
+
+const PROMPT = [
+  "This is a photo of one or more GRADED trading-card slabs (PSA, CGC, SGC, or BGS).",
+  "For every slab you can see, read its grading label and return:",
+  '- grader: one of "PSA" | "CGC" | "SGC" | "BGS"',
+  "- cert: the printed certification / serial number (digits), or omit if unreadable",
+  "- confidence: 0..1, how sure you are of the read",
+  "- boundingBox: {x,y,w,h} as fractions 0..1 of the image",
+  'Respond with ONLY a JSON array, e.g. [{"grader":"PSA","cert":"58127634","confidence":0.95,"boundingBox":{"x":0.1,"y":0.1,"w":0.2,"h":0.3}}].',
+  "Include glare/blurred slabs too, with low confidence and no cert. No prose, JSON only.",
+].join("\n");
+
+interface RawSlab {
+  grader?: string;
+  cert?: string;
+  confidence?: number;
+  boundingBox?: { x: number; y: number; w: number; h: number };
 }
 
 export class RealVisionProvider implements VisionProvider {
   constructor(readonly config: RealVisionConfig) {}
 
-  async detectSlabs(_image: ImageInput): Promise<DetectedSlab[]> {
-    // TODO(vision): detect slab rectangles, then OCR/decode each label's
-    //   barcode + cert number (reuse identity's SlabLabelParser per grader).
-    //   iOS: VNDetectRectanglesRequest + VNRecognizeTextRequest (on-device).
-    //   Android: ML Kit object detection + text recognition.
-    //   Or POST the image to a hosted detector (endpointUrl/apiKey).
-    throw new Error("RealVisionProvider.detectSlabs not implemented — awaiting a vision backend");
+  async detectSlabs(image: ImageInput): Promise<DetectedSlab[]> {
+    const backend = (this.config.backend ?? "claude").toLowerCase();
+    if (backend !== "claude") {
+      // TODO(vision): on-device (Apple Vision / ML Kit) or a custom endpointUrl.
+      throw new Error(`RealVisionProvider: backend "${backend}" not implemented — use "claude" or wire a detector`);
+    }
+    if (!this.config.anthropicApiKey) throw new Error("RealVisionProvider: ANTHROPIC_API_KEY required for the claude backend");
+
+    const { data, mediaType } = normalize(image);
+    if (!data) throw new Error("RealVisionProvider: image base64 required (the web upload sends it)");
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": this.config.anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: this.config.model ?? "claude-opus-4-8",
+        max_tokens: 2048,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data } },
+              { type: "text", text: PROMPT },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`Anthropic vision API ${res.status}: ${await res.text()}`);
+
+    const body = (await res.json()) as { content?: { type: string; text?: string }[] };
+    const text = body.content?.find((b) => b.type === "text")?.text ?? "[]";
+    return parseSlabs(text).map((s, i) => ({
+      id: `v${i}`,
+      grader: normalizeGrader(s.grader),
+      certGuess: s.cert,
+      confidence: clamp01(typeof s.confidence === "number" ? s.confidence : 0.5),
+      boundingBox: s.boundingBox,
+    }));
   }
+}
+
+function normalize(image: ImageInput): { data?: string; mediaType: string } {
+  let data = image.base64;
+  let mediaType = image.mediaType ?? "image/jpeg";
+  if (data && data.startsWith("data:")) {
+    const m = data.match(/^data:(.*?);base64,(.*)$/s);
+    if (m) {
+      mediaType = m[1] || mediaType;
+      data = m[2];
+    }
+  }
+  return { data, mediaType };
+}
+
+function parseSlabs(text: string): RawSlab[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end === -1 || end < start) return [];
+  try {
+    const arr = JSON.parse(text.slice(start, end + 1));
+    return Array.isArray(arr) ? (arr as RawSlab[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeGrader(g?: string): Grader | undefined {
+  const up = (g ?? "").toUpperCase();
+  return up === "PSA" || up === "CGC" || up === "SGC" || up === "BGS" ? (up as Grader) : undefined;
+}
+function clamp01(x: number): number {
+  return Math.max(0, Math.min(1, x));
 }
