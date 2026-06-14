@@ -76,7 +76,9 @@ function hostedSignInUrl(): string | null {
     const fapi = atob(CLERK_KEY.split("_")[2]).replace(/\$+$/, ""); // immune-dinosaur-48.clerk.accounts.dev
     const portal = fapi.replace(".clerk.accounts.dev", ".accounts.dev");
     if (!portal.endsWith(".accounts.dev")) return null;
-    return `https://${portal}/sign-in?redirect_url=${encodeURIComponent(window.location.href)}`;
+    // Clean origin+path (drop ?query/#hash) so it matches Clerk's allowed-redirect list.
+    const back = window.location.origin + window.location.pathname;
+    return `https://${portal}/sign-in?redirect_url=${encodeURIComponent(back)}`;
   } catch {
     return null;
   }
