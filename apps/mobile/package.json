@@ -1,9 +1,26 @@
 {
   "name": "@trdr/mobile",
   "version": "0.0.0",
-  "private": true,
-  "description": "Expo (iOS + Android) client. Phase 1: scaffold Expo app, consume @trdr/core + @trdr/ui.",
+  "main": "index.ts",
+  "dependencies": {
+    "expo": "~56.0.11",
+    "expo-status-bar": "~56.0.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
   "scripts": {
-    "placeholder": "echo \"@trdr/mobile — run `expo init` in Phase 1\""
-  }
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "export:web": "expo export -p web",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true
 }

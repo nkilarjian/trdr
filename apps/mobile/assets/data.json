@@ -1,0 +1,121 @@
+{
+  "generatedAt": "2026-06-13T12:00:00Z",
+  "alerts": [
+    {
+      "itemId": "v-underpriced-auction",
+      "key": {
+        "set": "2018 Panini Prizm Basketball",
+        "number": "280",
+        "variant": "Silver",
+        "grader": "PSA",
+        "grade": 10
+      },
+      "fairValue": {
+        "point": 299.9234188034188,
+        "lower": 290.42291800341883,
+        "upper": 309.4239196034188,
+        "confidence": 0.7306726315484352,
+        "liquidity": 0.40384615384615385,
+        "compCount": 21,
+        "dispersion": 5,
+        "shrunk": true
+      },
+      "predictedClose": 178.17249999999999,
+      "expectedEdge": 61.53066949914533,
+      "sellerRisk": {
+        "label": "no notable signals",
+        "manipulationRisk": 0.050463576158940406,
+        "shrunk": false
+      },
+      "buyingOption": "AUCTION",
+      "endTime": "2026-06-13T20:00:00Z",
+      "deepLink": "https://www.ebay.com/itm/v-underpriced-auction?mkcid=1&campid=DEMO-EPN"
+    },
+    {
+      "itemId": "v-underpriced-bin",
+      "key": {
+        "set": "2018 Panini Prizm Basketball",
+        "number": "280",
+        "variant": "Silver",
+        "grader": "PSA",
+        "grade": 10
+      },
+      "fairValue": {
+        "point": 299.9234188034188,
+        "lower": 290.42291800341883,
+        "upper": 309.4239196034188,
+        "confidence": 0.7306726315484352,
+        "liquidity": 0.40384615384615385,
+        "compCount": 21,
+        "dispersion": 5,
+        "shrunk": true
+      },
+      "predictedClose": 215,
+      "expectedEdge": 19.179044499145323,
+      "sellerRisk": {
+        "label": "no notable signals",
+        "manipulationRisk": 0.05666666666666667,
+        "shrunk": true
+      },
+      "buyingOption": "BIN",
+      "deepLink": "https://www.ebay.com/itm/v-underpriced-bin?mkcid=1&campid=DEMO-EPN"
+    }
+  ],
+  "passport": {
+    "key": {
+      "set": "2018 Panini Prizm Basketball",
+      "number": "280",
+      "variant": "Silver",
+      "grader": "PSA",
+      "grade": 10
+    },
+    "cert": "58127634",
+    "fairValue": {
+      "point": 299.9234188034188,
+      "lower": 290.42291800341883,
+      "upper": 309.4239196034188,
+      "confidence": 0.7306726315484352,
+      "liquidity": 0.40384615384615385,
+      "compCount": 21,
+      "dispersion": 5,
+      "shrunk": true
+    },
+    "pop": {
+      "atGrade": 412,
+      "higher": 0,
+      "total": 5230
+    },
+    "recent": [
+      {
+        "date": "2026-06-12",
+        "price": 302,
+        "type": "auction-close"
+      },
+      {
+        "date": "2026-06-11",
+        "price": 301,
+        "type": "auction-close"
+      },
+      {
+        "date": "2026-06-10",
+        "price": 305,
+        "type": "auction-close"
+      },
+      {
+        "date": "2026-06-09",
+        "price": 297,
+        "type": "auction-close"
+      },
+      {
+        "date": "2026-06-08",
+        "price": 296,
+        "type": "auction-close"
+      },
+      {
+        "date": "2026-06-07",
+        "price": 298,
+        "type": "auction-close"
+      }
+    ]
+  }
+}

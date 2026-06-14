@@ -9,6 +9,7 @@
     "e2e": "tsx scripts/e2e.ts",
     "backtest": "tsx scripts/backtest.ts",
     "preview": "tsx scripts/build-preview.ts",
+    "snapshot": "tsx scripts/build-snapshot.ts",
     "build": "turbo run build",
     "test": "turbo run test"
   },

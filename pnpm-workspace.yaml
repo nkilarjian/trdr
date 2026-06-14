@@ -1,5 +1,8 @@
 packages:
   - apps/*
+  # apps/mobile is managed by npm, not pnpm — Expo's Metro bundler can't crawl
+  # pnpm's node_modules layout. It consumes @trdr/ui via a Metro source alias.
+  - "!apps/mobile"
   - services/*
   - packages/*
   - packages/providers/*
