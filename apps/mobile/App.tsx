@@ -481,9 +481,54 @@ function CardImage({ uri, label, size = 52 }: { uri?: string; label?: string; si
   );
 }
 
-function LibraryScreen({ holdings, scan, onAddScanned, columns }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void; columns: number }) {
+// On web/desktop (Windows) there's no camera, so building the library means
+// picking an image file. On native, a camera/library picker supplies the uri
+// (expo-image-picker / expo-camera — wired in the native build).
+function pickImageWeb(): Promise<string | undefined> {
+  const doc = (globalThis as { document?: any }).document;
+  if (!doc) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const input = doc.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      const u = (globalThis as { URL?: any }).URL;
+      resolve(file && u ? u.createObjectURL(file) : undefined);
+    };
+    input.click();
+  });
+}
+
+function LibraryScreen({ holdings, scan: bundledScan, onAddScanned, columns }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void; columns: number }) {
   const [scanning, setScanning] = useState(false);
+  const [scan, setScan] = useState<Scan>(bundledScan);
+  const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
   const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
+  const isWeb = Platform.OS === "web";
+
+  const runScan = async (uri?: string) => {
+    setPhotoUri(uri);
+    if (API_BASE) {
+      try {
+        const r = await fetch(`${API_BASE}/api/v1/library/scan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: { uri } }),
+        });
+        if (r.ok) setScan((await r.json()) as Scan);
+      } catch {
+        /* unreachable API → keep the bundled scan */
+      }
+    }
+    setScanning(true);
+  };
+
+  const upload = async () => {
+    const uri = await pickImageWeb();
+    if (uri) runScan(uri);
+  };
+
   return (
     <View>
       <Text style={styles.colH}>Your library</Text>
@@ -498,14 +543,32 @@ function LibraryScreen({ holdings, scan, onAddScanned, columns }: { holdings: Va
         </View>
       </View>
 
-      <Pressable style={styles.scanBtn} onPress={() => setScanning(true)}>
-        <Text style={styles.scanBtnText}>Scan a photo of your cards</Text>
-        <Text style={styles.scanBtnSub}>Reads many cards from one picture — no typing</Text>
-      </Pressable>
+      {isWeb ? (
+        <Pressable style={styles.scanBtn} onPress={upload}>
+          <Text style={styles.scanBtnText}>Upload a photo of your cards</Text>
+          <Text style={styles.scanBtnSub}>Pick an image — reads many cards from one picture</Text>
+        </Pressable>
+      ) : (
+        <View>
+          <Pressable style={styles.scanBtn} onPress={() => runScan(undefined)}>
+            <Text style={styles.scanBtnText}>Take a photo of your cards</Text>
+            <Text style={styles.scanBtnSub}>Reads many cards from one picture — no typing</Text>
+          </Pressable>
+          <Pressable style={styles.scanBtnAlt} onPress={() => runScan(undefined)}>
+            <Text style={styles.scanBtnAltText}>Upload from this device instead</Text>
+          </Pressable>
+        </View>
+      )}
+      <Text style={styles.hint}>
+        {isWeb
+          ? "On Windows/desktop, upload a photo — camera capture is on the phone app."
+          : "No camera? On a computer you upload a photo instead."}
+      </Text>
 
       {scanning ? (
         <ScanFlow
           scan={scan}
+          photoUri={photoUri}
           onAdd={() => {
             onAddScanned(scan.valued);
             setScanning(false);
@@ -552,9 +615,15 @@ function HoldingCard({ v }: { v: ValuedHolding }) {
   );
 }
 
-function ScanFlow({ scan, onAdd, onCancel }: { scan: Scan; onAdd: () => void; onCancel: () => void }) {
+function ScanFlow({ scan, photoUri, onAdd, onCancel }: { scan: Scan; photoUri?: string; onAdd: () => void; onCancel: () => void }) {
   return (
     <View style={styles.scanBox}>
+      {photoUri ? (
+        <View style={styles.photoPreviewRow}>
+          <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="cover" />
+          <Text style={styles.hint}>From your photo</Text>
+        </View>
+      ) : null}
       <Text style={styles.scanTitle}>
         Read {scan.added.length} of {scan.detected} cards
       </Text>
@@ -676,9 +745,13 @@ const styles = StyleSheet.create({
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
   libSumV: { color: C.ink, fontSize: 20, fontWeight: "800" },
   libSumL: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
-  scanBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 14, alignItems: "center" },
+  scanBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, alignItems: "center" },
   scanBtnText: { color: "#04122b", fontSize: 16, fontWeight: "700" },
   scanBtnSub: { color: "#0a2547", fontSize: 12, marginTop: 2 },
+  scanBtnAlt: { borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 11, alignItems: "center", marginTop: 8 },
+  scanBtnAltText: { color: C.accent, fontSize: 13, fontWeight: "600" },
+  photoPreviewRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  photoPreview: { width: 56, height: 56, borderRadius: 8, backgroundColor: C.panel },
   holdingRow: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 12, marginBottom: 10 },
   holdingName: { color: C.ink, fontSize: 14, fontWeight: "600" },
   holdingSub: { color: C.muted, fontSize: 12, marginTop: 2 },
