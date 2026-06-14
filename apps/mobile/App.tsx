@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Children, useEffect, useState, type ReactNode } from "react";
+import { Image, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { alertVM, fairValueVM } from "./src/trdr-ui";
 import { buildWishTree, parseWish, type WishNode, type WishSpec } from "./src/trdr-wishlist";
@@ -122,35 +122,79 @@ export default function App() {
       return [...prev, ...valued.filter((v) => !seen.has(v.holding.id))];
     });
 
+  // ── responsive: detect size live (updates on rotate/resize) and adapt ──
+  const { width } = useWindowDimensions();
+  const kind: "phone" | "tablet" | "wide" = width >= 1000 ? "wide" : width >= 700 ? "tablet" : "phone";
+  const columns = kind === "wide" ? 3 : kind === "tablet" ? 2 : 1;
+  const maxWidth = kind === "wide" ? 1080 : kind === "tablet" ? 760 : undefined;
+  const deviceLabel = Platform.OS === "web" ? "web" : kind === "tablet" ? "tablet" : "phone";
+
+  const tabs: { key: typeof tab; label: string }[] = [
+    { key: "alerts", label: `Deals · ${feed.alerts.length}` },
+    { key: "library", label: `Library · ${holdings.length}` },
+    { key: "wishlist", label: `Wishlist · ${hits.length}` },
+    { key: "passport", label: "Card" },
+  ];
+
+  const body = (
+    <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
+      {tab === "alerts" && <AlertsFeed alerts={feed.alerts} columns={columns} />}
+      {tab === "library" && <LibraryScreen holdings={holdings} scan={feed.scan} onAddScanned={addScanned} columns={columns} />}
+      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} />}
+      {tab === "passport" && <PassportScreen passport={feed.passport} />}
+      <Text style={styles.foot}>
+        {source === "live" ? "Live from the model API" : "Bundled snapshot"} · {deviceLabel} layout · {feed.passport.fairValue.compCount} clean comps
+      </Text>
+    </View>
+  );
+
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.brand}>TRDR</Text>
+      {kind !== "phone" ? <Text style={styles.sub}>graded-card mispricing terminal</Text> : null}
+      <View style={[styles.srcChip, styles.srcSnap]}>
+        <Text style={[styles.srcText, { color: C.muted }]}>{deviceLabel}</Text>
+      </View>
+      <View style={[styles.srcChip, source === "live" ? styles.srcLive : styles.srcSnap]}>
+        <Text style={[styles.srcText, { color: source === "live" ? C.green : C.muted }]}>{source === "live" ? "live" : "snapshot"}</Text>
+      </View>
+    </View>
+  );
+
+  // Wide screens (iPad landscape / desktop): a left sidebar nav + centered content.
+  if (kind === "wide") {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="light" />
+        {header}
+        <View style={{ flexDirection: "row", flex: 1 }}>
+          <View style={styles.sidebar}>
+            {tabs.map((t) => (
+              <Pressable key={t.key} style={[styles.sideTab, tab === t.key && styles.sideTabActive]} onPress={() => setTab(t.key)}>
+                <Text style={[styles.sideTabText, tab === t.key && styles.sideTabTextActive]}>{t.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }}>
+            {body}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Phone / tablet: top tabs + content.
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
-      <View style={styles.header}>
-        <Text style={styles.brand}>TRDR</Text>
-        <Text style={styles.sub}>graded-card mispricing terminal</Text>
-        <View style={[styles.srcChip, source === "live" ? styles.srcLive : styles.srcSnap]}>
-          <Text style={[styles.srcText, { color: source === "live" ? C.green : C.muted }]}>
-            {source === "live" ? "live" : "snapshot"}
-          </Text>
-        </View>
-      </View>
-
+      {header}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-        <TabButton label={`Deals · ${feed.alerts.length}`} active={tab === "alerts"} onPress={() => setTab("alerts")} />
-        <TabButton label={`Library · ${holdings.length}`} active={tab === "library"} onPress={() => setTab("library")} />
-        <TabButton label={`Wishlist · ${hits.length}`} active={tab === "wishlist"} onPress={() => setTab("wishlist")} />
-        <TabButton label="Card" active={tab === "passport"} onPress={() => setTab("passport")} />
+        {tabs.map((t) => (
+          <TabButton key={t.key} label={t.label} active={tab === t.key} onPress={() => setTab(t.key)} />
+        ))}
       </ScrollView>
-
-      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
-        {tab === "alerts" && <AlertsFeed alerts={feed.alerts} />}
-        {tab === "library" && <LibraryScreen holdings={holdings} scan={feed.scan} onAddScanned={addScanned} />}
-        {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} />}
-        {tab === "passport" && <PassportScreen passport={feed.passport} />}
-        <Text style={styles.foot}>
-          {source === "live" ? "Live from the model API" : "Bundled snapshot"} on mock data ·{" "}
-          {feed.passport.fairValue.compCount} clean comps
-        </Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 8 }}>
+        {body}
       </ScrollView>
     </SafeAreaView>
   );
@@ -164,10 +208,23 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
-function AlertsFeed({ alerts }: { alerts: Alert[] }) {
+/** Lays children into N responsive columns (1 column = passthrough). */
+function Grid({ columns, children }: { columns: number; children: ReactNode }) {
+  if (columns <= 1) return <>{children}</>;
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 }}>
+      {Children.map(children, (child) => (
+        <View style={{ width: `${100 / columns}%`, paddingHorizontal: 5 }}>{child}</View>
+      ))}
+    </View>
+  );
+}
+
+function AlertsFeed({ alerts, columns }: { alerts: Alert[]; columns: number }) {
   return (
     <View>
       <Text style={styles.colH}>Underpriced alerts</Text>
+      <Grid columns={columns}>
       {alerts.map((a) => {
         const vm = alertVM(a);
         return (
@@ -200,6 +257,7 @@ function AlertsFeed({ alerts }: { alerts: Alert[] }) {
           </View>
         );
       })}
+      </Grid>
     </View>
   );
 }
@@ -300,7 +358,7 @@ function BigStat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function WishlistScreen({ tree, hits, onAdd }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void }) {
+function WishlistScreen({ tree, hits, onAdd, columns }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void; columns: number }) {
   const [text, setText] = useState("");
   const submit = () => {
     const t = text.trim();
@@ -338,7 +396,9 @@ function WishlistScreen({ tree, hits, onAdd }: { tree: WishNode; hits: WishHit[]
       {hits.length === 0 ? (
         <Text style={styles.hint}>The background scan hasn't surfaced anything yet.</Text>
       ) : (
-        hits.map((h) => <HitCard key={h.itemId} hit={h} />)
+        <Grid columns={columns}>
+          {hits.map((h) => <HitCard key={h.itemId} hit={h} />)}
+        </Grid>
       )}
     </View>
   );
@@ -421,7 +481,7 @@ function CardImage({ uri, label, size = 52 }: { uri?: string; label?: string; si
   );
 }
 
-function LibraryScreen({ holdings, scan, onAddScanned }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void }) {
+function LibraryScreen({ holdings, scan, onAddScanned, columns }: { holdings: ValuedHolding[]; scan: Scan; onAddScanned: (v: ValuedHolding[]) => void; columns: number }) {
   const [scanning, setScanning] = useState(false);
   const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
   return (
@@ -454,9 +514,11 @@ function LibraryScreen({ holdings, scan, onAddScanned }: { holdings: ValuedHoldi
         />
       ) : null}
 
-      {holdings.map((v) => (
-        <HoldingCard key={v.holding.id} v={v} />
-      ))}
+      <Grid columns={columns}>
+        {holdings.map((v) => (
+          <HoldingCard key={v.holding.id} v={v} />
+        ))}
+      </Grid>
     </View>
   );
 }
@@ -604,6 +666,11 @@ const styles = StyleSheet.create({
   price: { color: C.ink, fontSize: 14, fontWeight: "800" },
 
   tabsScroll: { flexGrow: 0 },
+  sidebar: { width: 200, paddingHorizontal: 12, paddingTop: 6, gap: 6, borderRightWidth: 1, borderRightColor: C.line },
+  sideTab: { paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10 },
+  sideTabActive: { backgroundColor: C.panel2 },
+  sideTabText: { color: C.muted, fontSize: 15, fontWeight: "600" },
+  sideTabTextActive: { color: C.ink },
   ppHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
 
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
