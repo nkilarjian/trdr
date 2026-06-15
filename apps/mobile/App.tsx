@@ -133,7 +133,7 @@ function parseHolding(text: string, id: string): Holding {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "passport">("alerts");
+  const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "scan" | "passport">("alerts");
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
   // What the backend can actually do (real creds vs mocks) — drives honest
   // labelling and hides features that aren't really wired (e.g. photo-scan).
@@ -312,7 +312,7 @@ export default function App() {
     { key: "alerts", label: `Deals · ${alerts.length}`, icon: "pricetags-outline" },
     { key: "library", label: `Library · ${holdings.length}`, icon: "albums-outline" },
     { key: "wishlist", label: `Wishlist · ${hits.length}`, icon: "heart-outline" },
-    { key: "passport", label: "Card", icon: "card-outline" },
+    { key: "scan", label: "Scan", icon: "scan-outline" },
   ];
 
   // Pull-to-refresh: re-pull deals/wishlist + re-price the library.
@@ -344,6 +344,7 @@ export default function App() {
         />
       )}
       {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} pro={pro} />}
+      {tab === "scan" && <ScanScreen canScan={visionReal} scan={FALLBACK.scan} onAddScanned={addScanned} onDone={() => setTab("library")} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
         {source === "live" ? (marketReal ? "Live eBay prices" : "Estimated values") : "Demo data"} · {deviceLabel} layout
@@ -959,6 +960,78 @@ function HoldingCard({ v, onRemove }: { v: ValuedHolding; onRemove?: (id: string
           <Text style={styles.holdingRemoveText}>✕</Text>
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+function ScanScreen({
+  canScan,
+  scan: bundledScan,
+  onAddScanned,
+  onDone,
+}: {
+  canScan: boolean;
+  scan: Scan;
+  onAddScanned: (v: ValuedHolding[]) => void;
+  onDone?: () => void;
+}) {
+  const [scanning, setScanning] = useState(false);
+  const [scan, setScan] = useState<Scan>(bundledScan);
+  const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
+  const isWeb = Platform.OS === "web";
+
+  const runScan = async (img?: PickedImage) => {
+    setPhotoUri(img?.previewUri);
+    if (API_BASE) {
+      try {
+        const r = await fetch(`${API_BASE}/api/v1/library/scan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: img ? { base64: img.base64, mediaType: img.mediaType } : {} }),
+        });
+        if (r.ok) setScan((await r.json()) as Scan);
+      } catch {
+        /* unreachable API → keep the bundled scan */
+      }
+    }
+    setScanning(true);
+  };
+  const upload = async () => {
+    const img = await pickImageWeb();
+    if (img) runScan(img);
+  };
+
+  return (
+    <View>
+      <Text style={styles.colH}>Scan your collection</Text>
+      {canScan ? (
+        <>
+          <Pressable style={styles.scanBtn} onPress={isWeb ? upload : () => runScan(undefined)}>
+            <Ionicons name="camera-outline" size={22} color="#04122b" />
+            <Text style={styles.scanBtnText}>{isWeb ? "Upload a photo" : "Take a photo"}</Text>
+            <Text style={styles.scanBtnSub}>Reads every slab in the shot</Text>
+          </Pressable>
+          {scanning ? (
+            <ScanFlow
+              scan={scan}
+              photoUri={photoUri}
+              onAdd={() => {
+                onAddScanned(scan.valued);
+                setScanning(false);
+                onDone?.();
+              }}
+              onCancel={() => setScanning(false)}
+            />
+          ) : (
+            <Text style={styles.hint}>Point at a stack of graded cards — it reads each label (year, set, player, #, grade) and adds them to your library. Cheap: ~1¢ a card.</Text>
+          )}
+        </>
+      ) : (
+        <View style={styles.scanBox}>
+          <Text style={styles.scanTitle}>Scanner not connected</Text>
+          <Text style={[styles.hint, { marginTop: 6 }]}>The AI card-reader isn't switched on yet. For now, add cards by hand in Library — it's saved on this device.</Text>
+        </View>
+      )}
     </View>
   );
 }
