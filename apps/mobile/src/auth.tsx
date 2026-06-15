@@ -49,18 +49,42 @@ function AuthButtonInner() {
       </Pressable>
     );
   }
-  // In-app sign-in modal (email code or Google). It establishes the session
-  // directly in the app — no cross-domain redirect, which is the only thing that
-  // reliably works for a Clerk dev instance hosted on github.io. Sign-in is
-  // OPTIONAL; the app works fully as a guest and only needs this to sync devices.
+  // Production Clerk: on web, use the HOSTED Account Portal (accounts.<domain>).
+  // It shares the app's root domain now, so the session returns seamlessly — the
+  // proper password/Google "stays signed in" experience. Native (and any fallback)
+  // use the in-app modal. Sign-in is optional; the app works fully as a guest.
+  const startSignIn = () => {
+    const url = Platform.OS === "web" ? hostedSignInUrl() : null;
+    if (url) window.location.assign(url);
+    else setOpen(true);
+  };
   return (
     <>
-      <Pressable style={[a.chip, a.chipOn]} onPress={() => setOpen(true)}>
+      <Pressable style={[a.chip, a.chipOn]} onPress={startSignIn}>
         <Text style={[a.chipText, { color: "#04122b" }]}>Sign in</Text>
       </Pressable>
       <SignInModal visible={open} onClose={() => setOpen(false)} />
     </>
   );
+}
+
+// Clerk hosted Account Portal sign-in URL, derived from the publishable key's
+// Frontend API host, redirecting back to the current page. Handles both
+// production (clerk.<app> → accounts.<app>) and dev (<slug>.clerk.accounts.dev
+// → <slug>.accounts.dev) keys.
+function hostedSignInUrl(): string | null {
+  if (!CLERK_KEY || typeof window === "undefined" || typeof atob === "undefined") return null;
+  try {
+    const fapi = atob(CLERK_KEY.split("_")[2]).replace(/\$+$/, "");
+    let portal: string;
+    if (fapi.includes(".clerk.accounts.dev")) portal = fapi.replace(".clerk.accounts.dev", ".accounts.dev");
+    else if (fapi.startsWith("clerk.")) portal = "accounts." + fapi.slice("clerk.".length);
+    else return null;
+    const back = window.location.origin + window.location.pathname;
+    return `https://${portal}/sign-in?redirect_url=${encodeURIComponent(back)}`;
+  } catch {
+    return null;
+  }
 }
 
 function SignInModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {

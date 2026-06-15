@@ -36,8 +36,9 @@ jobs:
       - name: Build web (custom domain root)
         working-directory: apps/mobile
         env:
-          # Clerk publishable key is public (ships in every client) — safe to commit.
-          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_aW1tdW5lLWRpbm9zYXVyLTQ4LmNsZXJrLmFjY291bnRzLmRldiQ
+          # Clerk PRODUCTION publishable key (public — ships in every client). The
+          # production instance lives on clerk.trdr.kilarjian.com / accounts.trdr.kilarjian.com.
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsudHJkci5raWxhcmppYW4uY29tJA
           # Live data engine (TRDR API on Railway). Serves model estimates until
           # the EBAY_* vars are set on Railway, then real eBay-backed values.
           EXPO_PUBLIC_API_BASE: https://trdr-api-production.up.railway.app
