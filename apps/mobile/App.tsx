@@ -1,5 +1,5 @@
 import { Children, createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -66,17 +66,29 @@ const FALLBACK = snapshot as unknown as Feed;
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
 
 const C = {
-  bg: "#0b0e14",
-  panel: "#141925",
-  panel2: "#1b2230",
-  line: "#232c3b",
+  bg: "#0a0e16",
+  panel: "#0f1622",
+  panel2: "#0d1420",
+  line: "#1c2535",
   ink: "#e6edf3",
   muted: "#8b97a8",
   green: "#3fb950",
   amber: "#d29922",
   red: "#f85149",
-  accent: "#74b1f0",
+  accent: "#58a6ff",
 };
+
+// Monospace for numbers — the terminal feel. Web gets a real mono stack; native
+// falls back to its system mono.
+const MONO = Platform.select({ web: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", default: "monospace" }) as string;
+
+// Money + signal helpers for the terminal rows.
+const money = (n: number) => Math.round(n).toLocaleString();
+function signal(edge: number, conf: number): { tag: string; color: string } {
+  if (edge >= 0.15 && conf >= 0.7) return { tag: "buy", color: C.green };
+  if (edge >= 0.06) return { tag: "watch", color: C.amber };
+  return { tag: "thin", color: C.muted };
+}
 
 const tone = (t: string) => (t === "high" || t === "ok" ? C.green : t === "medium" || t === "caution" ? C.amber : C.red);
 
@@ -126,6 +138,7 @@ export default function App() {
   // What the backend can actually do (real creds vs mocks) — drives honest
   // labelling and hides features that aren't really wired (e.g. photo-scan).
   const [caps, setCaps] = useState<{ market?: string; vision?: string; grading?: string }>({});
+  const [refreshing, setRefreshing] = useState(false);
   // Your wishlist drives everything (deals + wishlist + the watched cards).
   const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
   const [alerts, setAlerts] = useState<Alert[]>(FALLBACK.alerts);
@@ -302,6 +315,15 @@ export default function App() {
     { key: "passport", label: "Card", icon: "card-outline" },
   ];
 
+  // Pull-to-refresh: re-pull deals/wishlist + re-price the library.
+  const onRefresh = () => {
+    setRefreshing(true);
+    refreshBoard(specs);
+    revalueLibrary(holdings);
+    setTimeout(() => setRefreshing(false), 1200);
+  };
+  const refreshCtl = <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} progressBackgroundColor={C.panel} />;
+
   // Real eBay market data vs model estimates; real vision backend vs none.
   const marketReal = !!caps.market && caps.market !== "mock";
   const visionReal = !!caps.vision && caps.vision !== "mock";
@@ -394,7 +416,7 @@ export default function App() {
             </Pressable>
           ))}
         </View>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }} refreshControl={refreshCtl}>
           {body}
         </ScrollView>
       </View>,
@@ -404,7 +426,7 @@ export default function App() {
   // Phone / tablet: content with a bottom tab bar (thumb reach, iOS pattern).
   return shell(
     <>
-      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 12 }}>
+      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 12 }} refreshControl={refreshCtl}>
         {body}
       </ScrollView>
       <View style={styles.bottomBar}>
@@ -472,48 +494,52 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
 }
 
 function AlertsFeed({ alerts, columns, pro }: { alerts: Alert[]; columns: number; pro: boolean }) {
+  // edge % = how far the current price sits below fair value.
+  const edgeOf = (a: Alert) => {
+    const price = Number(alertVM(a).predictedClose.replace(/[^0-9.]/g, ""));
+    return price > 0 ? (a.fairValue.point - price) / price : 0;
+  };
+  const best = alerts.reduce((m, a) => Math.max(m, edgeOf(a)), 0);
   return (
     <View>
-      <Text style={styles.colH}>{plain(pro, "Deals for you", "Underpriced alerts")}</Text>
+      <View style={styles.feedHead}>
+        <Text style={styles.colH}>Live deals</Text>
+        <Text style={styles.feedMeta}>
+          {alerts.length} open · best <Text style={{ color: C.green }}>+{Math.round(best * 100)}%</Text>
+        </Text>
+      </View>
       <Grid columns={columns}>
-      {alerts.map((a) => {
-        const vm = alertVM(a);
-        const sure = sureness(a.fairValue.confidence);
-        return (
-          <View key={a.itemId} style={styles.card}>
-            <View style={styles.alertTop}>
-              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={40} />
-              <View style={[styles.badge, { backgroundColor: a.buyingOption === "AUCTION" ? "#16314f" : "#13301f" }]}>
-                <Text style={[styles.badgeText, { color: a.buyingOption === "AUCTION" ? C.accent : "#5ec06f" }]}>
-                  {a.buyingOption}
+        {alerts.map((a) => {
+          const vm = alertVM(a);
+          const sure = sureness(a.fairValue.confidence);
+          const edge = edgeOf(a);
+          const sig = signal(edge, a.fairValue.confidence);
+          return (
+            <Pressable key={a.itemId} style={styles.deal} onPress={() => Linking.openURL(vm.deepLink)}>
+              <CardImage uri={a.imageUrl} label={`${a.key.grade}`} size={44} />
+              <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                <Text style={styles.dealName} numberOfLines={1}>
+                  {vm.title}
+                </Text>
+                <Text style={styles.dealMeta} numberOfLines={1}>
+                  fv {money(a.fairValue.point)} · {a.buyingOption === "AUCTION" ? "bid" : "ask"} {vm.predictedClose.replace("$", "")} ·{" "}
+                  <Text style={{ color: tone(sure.tone) }}>{sure.dots}</Text>
                 </Text>
               </View>
-              <Text style={styles.alertTitle} numberOfLines={1}>
-                {vm.title}
-              </Text>
-              <Text style={styles.edge}>{plain(pro, `Save ${vm.edge.replace("+", "")}`, `${vm.edge} edge`)}</Text>
-            </View>
-            <View style={styles.row}>
-              <Stat label={plain(pro, a.buyingOption === "AUCTION" ? "likely final" : "price now", a.buyingOption === "AUCTION" ? "predicted close" : "price now")} value={vm.predictedClose} />
-              <Stat label={plain(pro, "what it's worth", "fair value band")} value={vm.band.range} />
-              {pro ? (
-                <Stat label="confidence" value={vm.band.confidence} color={tone(vm.band.confidenceTone)} />
-              ) : (
-                <Stat label="how sure" value={`${sure.dots}  ${sure.label}`} color={tone(sure.tone)} />
-              )}
-            </View>
-            <View style={styles.row}>
-              <View style={[styles.chip, { borderColor: tone(vm.sellerTone) + "66" }]}>
-                <Text style={[styles.chipText, { color: tone(vm.sellerTone) }]}>{plain(pro, friendlySeller(vm.sellerChip), `seller: ${vm.sellerChip}`)}</Text>
+              <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+                <Text style={[styles.dealEdge, { color: sig.color }]}>
+                  {edge >= 0 ? "+" : ""}
+                  {Math.round(edge * 100)}%
+                </Text>
+                <View style={[styles.sigTag, { borderColor: sig.color + "55" }]}>
+                  <Text style={[styles.sigTagText, { color: sig.color }]}>{sig.tag}</Text>
+                </View>
               </View>
-            </View>
-            <Pressable onPress={() => Linking.openURL(vm.deepLink)}>
-              <Text style={styles.cta}>{plain(pro, "See it on eBay →", "Open on eBay →")}</Text>
             </Pressable>
-          </View>
-        );
-      })}
+          );
+        })}
       </Grid>
+      {pro ? <Text style={styles.feedFoot}>edge = fair value vs. current price · dots = comp confidence · buy ≥15% · watch ≥6%</Text> : null}
     </View>
   );
 }
@@ -1012,6 +1038,15 @@ const styles = StyleSheet.create({
   tabTextActive: { color: C.ink },
   scroll: { flex: 1 },
   colH: { color: C.muted, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 },
+  feedHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  feedMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginBottom: 10 },
+  feedFoot: { color: C.muted, fontSize: 11, fontFamily: MONO, lineHeight: 16, marginTop: 6 },
+  deal: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 10, marginBottom: 7 },
+  dealName: { color: C.ink, fontSize: 13 },
+  dealMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginTop: 3 },
+  dealEdge: { fontSize: 16, fontFamily: MONO, fontWeight: "700" },
+  sigTag: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 0, marginTop: 3 },
+  sigTagText: { fontSize: 11, fontFamily: MONO },
   card: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 10 },
   alertTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
   badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
@@ -1034,7 +1069,7 @@ const styles = StyleSheet.create({
   verified: { marginLeft: "auto", borderWidth: 1, borderColor: "#3a72b866", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   verifiedText: { color: C.accent, fontSize: 11 },
   ppName: { color: C.ink, fontSize: 15, fontWeight: "700", marginBottom: 4 },
-  ppPoint: { color: C.ink, fontSize: 33, fontWeight: "800", letterSpacing: -1 },
+  ppPoint: { color: C.ink, fontSize: 33, fontWeight: "800", letterSpacing: -1, fontFamily: MONO },
   ppPointSmall: { color: C.muted, fontSize: 12, fontWeight: "400" },
   band: { height: 8, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 6, marginTop: 14, marginBottom: 6, position: "relative" },
   bandPt: { position: "absolute", top: -4, width: 3, height: 16, backgroundColor: C.ink, borderRadius: 2 },
@@ -1044,7 +1079,7 @@ const styles = StyleSheet.create({
   meterFill: { height: "100%" },
   stats: { flexDirection: "row", gap: 10, marginVertical: 16 },
   bigStat: { flex: 1, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 8, padding: 10 },
-  bigStatV: { color: C.ink, fontSize: 16, fontWeight: "700" },
+  bigStatV: { color: C.ink, fontSize: 16, fontWeight: "700", fontFamily: MONO },
   bigStatL: { color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
   histHead: { flexDirection: "row", paddingVertical: 4 },
   histH: { color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
@@ -1067,7 +1102,7 @@ const styles = StyleSheet.create({
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   tag: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   tagText: { fontSize: 11 },
-  price: { color: C.ink, fontSize: 14, fontWeight: "800" },
+  price: { color: C.ink, fontSize: 14, fontWeight: "800", fontFamily: MONO },
 
   tabsScroll: { flexGrow: 0 },
   sidebar: { width: 200, paddingHorizontal: 12, paddingTop: 6, gap: 6, borderRightWidth: 1, borderRightColor: C.line },
@@ -1092,7 +1127,7 @@ const styles = StyleSheet.create({
   ppHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
 
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
-  libSumV: { color: C.ink, fontSize: 20, fontWeight: "800" },
+  libSumV: { color: C.ink, fontSize: 20, fontWeight: "800", fontFamily: MONO },
   libSumL: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
   libAddLabel: { color: C.ink, fontSize: 14, fontWeight: "600", marginBottom: 6 },
   scanBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, alignItems: "center" },
@@ -1105,9 +1140,9 @@ const styles = StyleSheet.create({
   holdingRow: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 12, marginBottom: 10 },
   holdingName: { color: C.ink, fontSize: 14, fontWeight: "600" },
   holdingSub: { color: C.muted, fontSize: 12, marginTop: 2 },
-  holdingTrend: { fontSize: 12, fontWeight: "600", marginTop: 3 },
-  holdingVal: { color: C.ink, fontSize: 16, fontWeight: "800" },
-  holdingPL: { fontSize: 12, fontWeight: "600", marginTop: 3 },
+  holdingTrend: { fontSize: 12, fontWeight: "600", marginTop: 3, fontFamily: MONO },
+  holdingVal: { color: C.ink, fontSize: 16, fontWeight: "800", fontFamily: MONO },
+  holdingPL: { fontSize: 12, fontWeight: "600", marginTop: 3, fontFamily: MONO },
   holdingRemove: { marginLeft: 8, padding: 4 },
   holdingRemoveText: { color: C.muted, fontSize: 14, fontWeight: "700" },
 
