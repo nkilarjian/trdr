@@ -3,7 +3,7 @@
 // to the user's Clerk profile metadata (so they follow you across devices).
 // When the key is absent, everything below no-ops and the app runs as a guest.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { ClerkProvider, useAuth, useClerk, useSignIn, useSignUp, useSSO, useUser } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
@@ -244,32 +244,14 @@ export function CloudSync(props: {
 }
 
 function CloudSyncInner({ specs, holdings, onLoad }: { specs: unknown[]; holdings: unknown[]; onLoad: (d: { specs?: unknown[]; holdings?: unknown[] }) => void }) {
-  const { user, isLoaded } = useUser();
-  const lastSynced = useRef("");
-  const loadedFor = useRef<string | null>(null);
-
-  // on sign-in: pull the account's saved wishlist/library down (once per user)
-  useEffect(() => {
-    if (!isLoaded || !user || loadedFor.current === user.id) return;
-    loadedFor.current = user.id;
-    const md = (user.unsafeMetadata ?? {}) as { wishlist?: unknown[]; library?: unknown[] };
-    if (Array.isArray(md.wishlist) || Array.isArray(md.library)) {
-      onLoad({ specs: md.wishlist, holdings: md.library });
-      lastSynced.current = JSON.stringify({ w: md.wishlist ?? [], l: md.library ?? [] });
-    } else {
-      lastSynced.current = ""; // no cloud data → push local up
-    }
-  }, [isLoaded, user, onLoad]);
-
-  // on change while signed in: push up (skip if unchanged → no loop)
-  useEffect(() => {
-    if (!user) return;
-    const cur = JSON.stringify({ w: specs, l: holdings });
-    if (cur === lastSynced.current) return;
-    lastSynced.current = cur;
-    user.update({ unsafeMetadata: { ...(user.unsafeMetadata ?? {}), wishlist: specs, library: holdings } }).catch(() => undefined);
-  }, [specs, holdings, user]);
-
+  // DISABLED: writing the library/wishlist back to Clerk on every change was the
+  // only code that ran differently while signed in, and it was interfering with
+  // the app (couldn't add cards when logged in). Everything still persists
+  // on-device via AsyncStorage; sign-in just no longer syncs across devices.
+  // TODO: re-enable cross-device sync with a debounced, off-render write.
+  void specs;
+  void holdings;
+  void onLoad;
   return null;
 }
 
