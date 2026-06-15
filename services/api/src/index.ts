@@ -3,6 +3,7 @@
 // registration are stubbed with TODOs and land in Phase 1.
 
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { DefaultIdentityResolver } from "@trdr/identity";
@@ -60,6 +61,29 @@ const capabilities = {
   grading: process.env.PSA_API_TOKEN || process.env.CGC_API_TOKEN || process.env.SGC_API_TOKEN || process.env.BGS_API_TOKEN ? "real" : "mock",
 };
 app.get("/health", async () => ({ ok: true, providers: capabilities }));
+
+// ── eBay Marketplace Account Deletion/Closure notifications ──
+// Required to activate eBay production keys. eBay first sends GET ?challenge_code
+// and expects { challengeResponse: sha256(challengeCode + token + endpoint) };
+// then POSTs deletion notifications which we just acknowledge (we don't store
+// eBay users' personal account data keyed by their account). The endpoint + token
+// below MUST exactly match what's entered in eBay's Alerts & Notifications page.
+const EBAY_VERIFICATION_TOKEN = process.env.EBAY_VERIFICATION_TOKEN ?? "trdrEbayAcctDeletionV1_7f3a2c91e5b8d40a6e2c1b9d4f";
+const EBAY_DELETION_ENDPOINT = process.env.EBAY_DELETION_ENDPOINT ?? "https://trdr-api-production.up.railway.app/ebay/account-deletion";
+app.get<{ Querystring: { challenge_code?: string } }>("/ebay/account-deletion", async (req, reply) => {
+  const challengeCode = req.query.challenge_code ?? "";
+  const hash = createHash("sha256");
+  hash.update(challengeCode);
+  hash.update(EBAY_VERIFICATION_TOKEN);
+  hash.update(EBAY_DELETION_ENDPOINT);
+  reply.header("content-type", "application/json").code(200);
+  return { challengeResponse: hash.digest("hex") };
+});
+app.post("/ebay/account-deletion", async (req, reply) => {
+  req.log.info({ topic: (req.body as { metadata?: { topic?: string } } | undefined)?.metadata?.topic }, "eBay account-deletion notification");
+  reply.code(200);
+  return { ok: true };
+});
 
 // 5c — manual cert door
 app.get<{ Params: { grader: string; cert: string } }>("/api/v1/resolve/cert/:grader/:cert", async (req) => {
