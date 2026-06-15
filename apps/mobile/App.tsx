@@ -247,6 +247,16 @@ export default function App() {
     persistSpecs(next);
     refreshBoard(next);
   };
+  // Batch add (the wishlist interview adds several at once) — one state update so
+  // they don't clobber each other via a stale `specs` closure.
+  const addWishes = (texts: string[]) => {
+    const fresh = texts.map((t) => t.trim()).filter(Boolean).map((t, i) => parseWish(t, `w-${Date.now()}-${i}`));
+    if (!fresh.length) return;
+    const next = [...specs, ...fresh];
+    setSpecs(next);
+    persistSpecs(next);
+    refreshBoard(next);
+  };
   const tree = buildWishTree(specs);
 
   // Library — persisted on the phone (AsyncStorage = localStorage on web).
@@ -343,7 +353,7 @@ export default function App() {
           pro={pro}
         />
       )}
-      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} columns={columns} pro={pro} />}
+      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} onAddMany={addWishes} columns={columns} pro={pro} />}
       {tab === "scan" && <ScanScreen canScan={visionReal} scan={FALLBACK.scan} onAddScanned={addScanned} onDone={() => setTab("library")} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
@@ -647,8 +657,9 @@ function BigStat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function WishlistScreen({ tree, hits, onAdd, columns, pro }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void; columns: number; pro: boolean }) {
+function WishlistScreen({ tree, hits, onAdd, onAddMany, columns, pro }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void; onAddMany: (t: string[]) => void; columns: number; pro: boolean }) {
   const [text, setText] = useState("");
+  const [iv, setIv] = useState(false);
   const submit = () => {
     const t = text.trim();
     if (t) {
@@ -659,23 +670,38 @@ function WishlistScreen({ tree, hits, onAdd, columns, pro }: { tree: WishNode; h
   return (
     <View>
       <Text style={styles.colH}>Your wishlist</Text>
-      <View style={styles.addRow}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          onSubmitEditing={submit}
-          returnKeyType="done"
-          placeholder="Add a card or player… e.g. Jordan Fleer PSA 9"
-          placeholderTextColor={C.muted}
-          style={styles.input}
+      {iv ? (
+        <WishlistInterview
+          onClose={() => setIv(false)}
+          onBuild={(ws) => {
+            onAddMany(ws);
+            setIv(false);
+          }}
         />
-        <Pressable style={styles.addBtn} onPress={submit}>
-          <Text style={styles.addBtnText}>Add</Text>
-        </Pressable>
-      </View>
-      <Text style={styles.hint}>Add what you want — broad ("any Charizard") or specific. It organizes itself.</Text>
+      ) : (
+        <>
+          <Pressable style={styles.buildBtn} onPress={() => setIv(true)}>
+            <Ionicons name="sparkles-outline" size={16} color="#04122b" />
+            <Text style={styles.buildBtnText}>Build my wishlist</Text>
+          </Pressable>
+          <View style={[styles.addRow, { marginTop: 8 }]}>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              onSubmitEditing={submit}
+              returnKeyType="done"
+              placeholder="…or add one — e.g. Jordan Fleer PSA 9"
+              placeholderTextColor={C.muted}
+              style={styles.input}
+            />
+            <Pressable style={styles.addBtn} onPress={submit}>
+              <Text style={styles.addBtnText}>Add</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
 
-      <View style={styles.treeBox}>
+      <View style={[styles.treeBox, { marginTop: 14 }]}>
         {tree.children.map((c) => (
           <TreeNodeView key={c.id} node={c} depth={0} hits={hits} />
         ))}
@@ -689,6 +715,66 @@ function WishlistScreen({ tree, hits, onAdd, columns, pro }: { tree: WishNode; h
           {hits.map((h) => <HitCard key={h.itemId} hit={h} />)}
         </Grid>
       )}
+    </View>
+  );
+}
+
+function IChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.ivChip, on && styles.ivChipOn]}>
+      <Text style={[styles.ivChipText, on && styles.ivChipTextOn]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+// Tap-through + free-text wishlist setup. Builds plain wish strings the existing
+// parseWish() understands, then hands them up as a batch.
+function WishlistInterview({ onBuild, onClose }: { onBuild: (wishes: string[]) => void; onClose: () => void }) {
+  const CATS = ["Basketball", "Football", "Baseball", "Pokémon", "Soccer", "Hockey", "F1 / racing", "Other"];
+  const GRADES = ["PSA 10", "PSA 9+", "Any grade"];
+  const [cats, setCats] = useState<string[]>([]);
+  const [grade, setGrade] = useState("PSA 10");
+  const [extra, setExtra] = useState("");
+  const toggle = (c: string) => setCats((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
+  const ready = cats.length > 0 || extra.trim().length > 0;
+  const build = () => {
+    const g = grade === "Any grade" ? "" : grade;
+    const wishes: string[] = [];
+    for (const c of cats) wishes.push(`${c} ${g}`.trim());
+    for (const line of extra.split(/[\n,]+/)) if (line.trim()) wishes.push(line.trim());
+    onBuild(wishes);
+  };
+  return (
+    <View style={styles.interview}>
+      <Text style={styles.ivStep}>What do you collect?</Text>
+      <View style={styles.chipWrap}>
+        {CATS.map((c) => (
+          <IChip key={c} label={c} on={cats.includes(c)} onPress={() => toggle(c)} />
+        ))}
+      </View>
+      <Text style={[styles.ivStep, { marginTop: 14 }]}>Grades you care about</Text>
+      <View style={styles.chipWrap}>
+        {GRADES.map((g) => (
+          <IChip key={g} label={g} on={grade === g} onPress={() => setGrade(g)} />
+        ))}
+      </View>
+      <Text style={[styles.ivStep, { marginTop: 14 }]}>Anything specific? (optional)</Text>
+      <TextInput
+        value={extra}
+        onChangeText={setExtra}
+        multiline
+        placeholder={"players, sets, cards — one per line, e.g.\nany Charizard under $400\n2018 Prizm Luka PSA 10"}
+        placeholderTextColor={C.muted}
+        style={[styles.input, { height: 78, paddingTop: 9, textAlignVertical: "top" }]}
+      />
+      <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+        <Pressable style={styles.scanCancel} onPress={onClose}>
+          <Text style={styles.scanCancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable style={[styles.scanAdd, !ready && { opacity: 0.5 }]} onPress={ready ? build : undefined} disabled={!ready}>
+          <Text style={styles.scanAddText}>Build wishlist</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -1157,6 +1243,15 @@ const styles = StyleSheet.create({
   addBtn: { backgroundColor: C.accent, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 10 },
   addBtnText: { color: "#04122b", fontWeight: "700", fontSize: 13 },
   hint: { color: C.muted, fontSize: 11, marginTop: 8, lineHeight: 15 },
+  buildBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 12 },
+  buildBtnText: { color: "#04122b", fontSize: 14, fontWeight: "700" },
+  interview: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 14 },
+  ivStep: { color: C.ink, fontSize: 13, fontWeight: "600", marginBottom: 8 },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  ivChip: { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: C.panel2 },
+  ivChipOn: { backgroundColor: C.accent, borderColor: C.accent },
+  ivChipText: { color: C.muted, fontSize: 13, fontWeight: "600" },
+  ivChipTextOn: { color: "#04122b" },
   treeBox: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 6, marginTop: 12 },
   treeRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
   treeLabel: { color: C.muted, fontSize: 13 },
