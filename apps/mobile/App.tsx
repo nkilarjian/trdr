@@ -748,21 +748,43 @@ function CardImage({ uri, label, size = 52 }: { uri?: string; label?: string; si
 // (expo-image-picker / expo-camera — wired in the native build).
 type PickedImage = { previewUri: string; base64: string; mediaType: string };
 function pickImageWeb(): Promise<PickedImage | undefined> {
-  const g = globalThis as { document?: any; URL?: any; FileReader?: any };
+  const g = globalThis as { document?: any; URL?: any; FileReader?: any; Image?: any };
   if (!g.document) return Promise.resolve(undefined);
   return new Promise((resolve) => {
     const input = g.document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
+    // On phones this lets the user pick the camera OR a photo from the library.
     input.onchange = () => {
       const file = input.files && input.files[0];
       if (!file) return resolve(undefined);
       const previewUri = g.URL ? g.URL.createObjectURL(file) : "";
       const reader = new g.FileReader();
       reader.onload = () => {
-        const dataUrl = String(reader.result);
-        const m = dataUrl.match(/^data:(.*?);base64,(.*)$/);
-        resolve({ previewUri, base64: m ? m[2] : "", mediaType: m ? m[1] : "image/jpeg" });
+        const src = String(reader.result);
+        const done = (base64: string, mediaType: string) => resolve({ previewUri, base64, mediaType });
+        const fromDataUrl = (u: string) => {
+          const m = u.match(/^data:(.*?);base64,(.*)$/);
+          done(m ? m[2] : "", m ? m[1] : "image/jpeg");
+        };
+        // Downscale a big phone photo so it fits the request + vision-API limits
+        // (and costs less). A slab label is legible well under 1600px.
+        try {
+          const img = new g.Image();
+          img.onload = () => {
+            try {
+              const MAX = 1600;
+              let w = img.width, h = img.height;
+              if (Math.max(w, h) > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+              const canvas = g.document.createElement("canvas");
+              canvas.width = w; canvas.height = h;
+              canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+              fromDataUrl(canvas.toDataURL("image/jpeg", 0.85));
+            } catch { fromDataUrl(src); }
+          };
+          img.onerror = () => fromDataUrl(src);
+          img.src = src;
+        } catch { fromDataUrl(src); }
       };
       reader.readAsDataURL(file);
     };

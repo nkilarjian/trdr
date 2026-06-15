@@ -42,7 +42,9 @@ const resolver = new DefaultIdentityResolver({
 const library = new LibraryStore(DEMO_LIBRARY);
 const watchlist = new WatchlistStore(watchlistPath());
 
-const app = Fastify({ logger: true });
+// 20MB body limit so a (downscaled) photo upload for library/scan isn't rejected;
+// the default 1MB is far too small for image payloads.
+const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 });
 
 // Allow the web app (a different origin when hosted, or :8081 in dev) to call us.
 // CORS_ORIGIN can restrict it; default reflects any origin. (register loads
