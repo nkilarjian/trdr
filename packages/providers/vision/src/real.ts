@@ -65,8 +65,9 @@ export class RealVisionProvider implements VisionProvider {
       },
       body: JSON.stringify({
         // Reading a printed slab label is OCR-grade work — Haiku is fast + cheap
-        // and plenty accurate. Override with VISION_MODEL for tougher photos.
-        model: this.config.model ?? "claude-haiku-4-5",
+        // and plenty accurate. Pinned dated ID (aliases aren't always accepted);
+        // override with VISION_MODEL for tougher photos.
+        model: this.config.model ?? "claude-haiku-4-5-20251001",
         max_tokens: 2048,
         messages: [
           {
