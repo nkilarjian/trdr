@@ -723,37 +723,28 @@ function tagColor(t: string): string {
 }
 
 function HitCard({ hit }: { hit: WishHit }) {
+  const primary = hit.tags[0];
   return (
-    <View style={styles.card}>
-      <View style={styles.alertTop}>
-        <CardImage uri={hit.imageUrl} label={hit.buyingOption} size={40} />
-        <View style={[styles.badge, { backgroundColor: hit.buyingOption === "AUCTION" ? "#16314f" : "#13301f" }]}>
-          <Text style={[styles.badgeText, { color: hit.buyingOption === "AUCTION" ? C.accent : "#5ec06f" }]}>
-            {hit.buyingOption}
-          </Text>
-        </View>
-        <Text style={styles.alertTitle} numberOfLines={1}>
+    <Pressable style={styles.deal} onPress={() => Linking.openURL(hit.deepLink)}>
+      <CardImage uri={hit.imageUrl} label={hit.buyingOption === "AUCTION" ? "AUC" : "BIN"} size={44} />
+      <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+        <Text style={styles.dealName} numberOfLines={1}>
           {hit.title}
         </Text>
-        <Text style={styles.price}>${hit.currentPrice.toLocaleString()}</Text>
+        <Text style={styles.dealMeta} numberOfLines={1}>
+          {hit.fairBand ? `fv ${money(hit.fairBand.point)} · ` : ""}
+          {hit.buyingOption === "AUCTION" ? "bid" : "ask"} {money(hit.currentPrice)} · int {Math.round(hit.interest * 100)}%
+        </Text>
       </View>
-      <View style={styles.tagRow}>
-        {hit.tags.map((t) => (
-          <View key={t} style={[styles.tag, { borderColor: tagColor(t) + "66" }]}>
-            <Text style={[styles.tagText, { color: tagColor(t) }]}>{t}</Text>
+      <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+        <Text style={styles.price}>${money(hit.currentPrice)}</Text>
+        {primary ? (
+          <View style={[styles.sigTag, { borderColor: tagColor(primary) + "55" }]}>
+            <Text style={[styles.sigTagText, { color: tagColor(primary) }]}>{primary}</Text>
           </View>
-        ))}
-      </View>
-      <View style={styles.row}>
-        <Stat label="interest" value={`${Math.round(hit.interest * 100)}%`} color={C.accent} />
-        {hit.fairBand ? (
-          <Stat label="fair band" value={`$${Math.round(hit.fairBand.lower)} – $${Math.round(hit.fairBand.upper)}`} />
         ) : null}
       </View>
-      <Pressable onPress={() => Linking.openURL(hit.deepLink)}>
-        <Text style={styles.cta}>Open on eBay →</Text>
-      </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
@@ -1137,9 +1128,9 @@ const styles = StyleSheet.create({
   scanBtnAltText: { color: C.accent, fontSize: 13, fontWeight: "600" },
   photoPreviewRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
   photoPreview: { width: 56, height: 56, borderRadius: 8, backgroundColor: C.panel },
-  holdingRow: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 12, marginBottom: 10 },
-  holdingName: { color: C.ink, fontSize: 14, fontWeight: "600" },
-  holdingSub: { color: C.muted, fontSize: 12, marginTop: 2 },
+  holdingRow: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 10, marginBottom: 7 },
+  holdingName: { color: C.ink, fontSize: 13, fontWeight: "600" },
+  holdingSub: { color: C.muted, fontSize: 11, marginTop: 2, fontFamily: MONO },
   holdingTrend: { fontSize: 12, fontWeight: "600", marginTop: 3, fontFamily: MONO },
   holdingVal: { color: C.ink, fontSize: 16, fontWeight: "800", fontFamily: MONO },
   holdingPL: { fontSize: 12, fontWeight: "600", marginTop: 3, fontFamily: MONO },
