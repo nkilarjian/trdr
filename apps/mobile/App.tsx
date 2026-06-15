@@ -408,7 +408,7 @@ export default function App() {
         <ScaleCtx.Provider value={textScale}>
           <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
             <StatusBar style="light" />
-            <Onboarding onDone={finishOnboarding} />
+            <Landing onDone={finishOnboarding} />
           </SafeAreaView>
         </ScaleCtx.Provider>
       </SafeAreaProvider>
@@ -452,22 +452,53 @@ export default function App() {
   );
 }
 
-function Onboarding({ onDone }: { onDone: () => void }) {
-  const features: { icon: IconName; title: string; sub: string }[] = [
-    { icon: "pricetags-outline", title: "Find great deals", sub: "We watch the market and flag cards selling below value." },
-    { icon: "albums-outline", title: "Snap your collection", sub: "One photo reads many cards at once — no typing them in." },
-    { icon: "heart-outline", title: "Build a wishlist", sub: "Tell us what you want; we hunt for it in the background." },
+function Landing({ onDone }: { onDone: () => void }) {
+  const deals = (FALLBACK.alerts || []).slice(0, 3);
+  const edgeOf = (a: Alert) => {
+    const p = Number(alertVM(a).predictedClose.replace(/[^0-9.]/g, ""));
+    return p > 0 ? (a.fairValue.point - p) / p : 0;
+  };
+  const props: { icon: IconName; title: string; sub: string }[] = [
+    { icon: "trending-up-outline", title: "Underpriced alerts", sub: "Live deals ranked by edge — fair value vs. the asking price, with a buy/watch signal." },
+    { icon: "albums-outline", title: "Your collection, valued", sub: "Track every slab like a portfolio: live value, profit/loss, 30-day trend." },
+    { icon: "camera-outline", title: "Scan a whole stack", sub: "One photo reads every graded label and adds them for you." },
   ];
   return (
-    <View style={styles.obWrap}>
-      <Text style={styles.obBrand}>TRDR</Text>
-      <Text style={styles.obTitle}>Know what your cards are worth.</Text>
-      <Text style={styles.obSub}>Friendly by default — flip on Pro mode anytime for the deep numbers.</Text>
-      <View style={{ marginTop: 28, gap: 18 }}>
-        {features.map((f) => (
+    <ScrollView contentContainerStyle={styles.landWrap}>
+      <View style={styles.landHeadRow}>
+        <Text style={styles.landBrand}>TRDR</Text>
+        <Text style={styles.landTag}>terminal</Text>
+      </View>
+      <Text style={styles.landTitle}>The terminal for graded cards.</Text>
+      <Text style={styles.landSub}>Find underpriced slabs. Track your collection like a portfolio. Built on real eBay comps.</Text>
+
+      <View style={styles.landPanel}>
+        <Text style={styles.colH}>Live deals</Text>
+        {deals.map((a) => {
+          const vm = alertVM(a);
+          const e = edgeOf(a);
+          const sig = signal(e, a.fairValue.confidence);
+          return (
+            <View key={a.itemId} style={styles.deal}>
+              <CardImage uri={a.imageUrl} label={`${a.key.grade}`} size={40} />
+              <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                <Text style={styles.dealName} numberOfLines={1}>{vm.title}</Text>
+                <Text style={styles.dealMeta} numberOfLines={1}>fv {money(a.fairValue.point)} · ask {vm.predictedClose.replace("$", "")}</Text>
+              </View>
+              <Text style={[styles.dealEdge, { color: sig.color, marginLeft: 8 }]}>
+                {e >= 0 ? "+" : ""}
+                {Math.round(e * 100)}%
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={{ gap: 16, marginTop: 20 }}>
+        {props.map((f) => (
           <View key={f.title} style={styles.obRow}>
             <View style={styles.obIcon}>
-              <Ionicons name={f.icon} size={22} color={C.accent} />
+              <Ionicons name={f.icon} size={20} color={C.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.obRowTitle}>{f.title}</Text>
@@ -476,11 +507,12 @@ function Onboarding({ onDone }: { onDone: () => void }) {
           </View>
         ))}
       </View>
-      <View style={{ flex: 1 }} />
-      <Pressable style={styles.obBtn} onPress={onDone}>
-        <Text style={styles.obBtnText}>Get started</Text>
+
+      <Pressable style={[styles.obBtn, { marginTop: 26 }]} onPress={onDone}>
+        <Text style={styles.obBtnText}>Enter the terminal →</Text>
       </Pressable>
-    </View>
+      <Text style={styles.landFoot}>Free to explore. Sign in (top-right, once inside) to save your wishlist & library across devices.</Text>
+    </ScrollView>
   );
 }
 
@@ -1273,6 +1305,14 @@ const styles = StyleSheet.create({
   bottomTab: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
   bottomTabText: { fontSize: 11, fontWeight: "600" },
 
+  landWrap: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 },
+  landHeadRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  landBrand: { color: C.ink, fontSize: 24, fontWeight: "800", letterSpacing: 3, fontFamily: MONO },
+  landTag: { color: C.accent, fontSize: 12, fontFamily: MONO, borderWidth: 1, borderColor: "#1f3a5f", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
+  landTitle: { color: C.ink, fontSize: 30, fontWeight: "800", letterSpacing: -0.5, lineHeight: 36, marginTop: 22 },
+  landSub: { color: C.muted, fontSize: 15, lineHeight: 22, marginTop: 12 },
+  landPanel: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginTop: 22 },
+  landFoot: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 16, textAlign: "center" },
   obWrap: { flex: 1, paddingHorizontal: 26, paddingTop: 40, paddingBottom: 28 },
   obBrand: { color: C.ink, fontSize: 22, fontWeight: "800", letterSpacing: 3 },
   obTitle: { color: C.ink, fontSize: 26, fontWeight: "800", letterSpacing: -0.5, marginTop: 16, lineHeight: 32 },
