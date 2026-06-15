@@ -41,7 +41,7 @@ type WishHit = {
 
 type Wishlist = { specs: WishSpec[]; tree: WishNode; hits: WishHit[] };
 
-type Holding = { id: string; key: CardKey; cert?: string; imageUrl?: string; acquiredPrice?: number };
+type Holding = { id: string; key: CardKey; cert?: string; imageUrl?: string; acquiredPrice?: number; acquiredAt?: string; acquiredFrom?: string };
 type ValuedHolding = {
   holding: Holding;
   fairValue?: { point: number; lower: number; upper: number; confidence: number };
@@ -284,6 +284,14 @@ export default function App() {
       persistLib(next);
       return next;
     });
+  // Edit optional purchase details (price paid / date / where) on a holding.
+  const updateHolding = (id: string, patch: Partial<Holding>) =>
+    setHoldings((prev) => {
+      const next = prev.map((v) => (v.holding.id === id ? { ...v, holding: { ...v.holding, ...patch } } : v));
+      persistLib(next);
+      revalueLibrary(next); // re-price so unrealized P/L reflects the new cost basis
+      return next;
+    });
 
   // Cloud (Clerk) → MERGE the account's saved wishlist/library with what's on the
   // device (union by id). Never replace: a freshly-added card must survive the
@@ -349,6 +357,7 @@ export default function App() {
           onAddScanned={addScanned}
           onAddHolding={addHolding}
           onRemove={removeHolding}
+          onUpdate={updateHolding}
           columns={columns}
           pro={pro}
         />
@@ -935,6 +944,7 @@ function LibraryScreen({
   onAddScanned,
   onAddHolding,
   onRemove,
+  onUpdate,
   columns,
   pro,
 }: {
@@ -944,6 +954,7 @@ function LibraryScreen({
   onAddScanned: (v: ValuedHolding[]) => void;
   onAddHolding: (text: string) => void;
   onRemove: (id: string) => void;
+  onUpdate: (id: string, patch: Partial<Holding>) => void;
   columns: number;
   pro: boolean;
 }) {
@@ -1039,7 +1050,7 @@ function LibraryScreen({
       ) : (
         <Grid columns={columns}>
           {holdings.map((v) => (
-            <HoldingCard key={v.holding.id} v={v} onRemove={onRemove} />
+            <HoldingCard key={v.holding.id} v={v} onRemove={onRemove} onUpdate={onUpdate} />
           ))}
         </Grid>
       )}
@@ -1047,36 +1058,77 @@ function LibraryScreen({
   );
 }
 
-function HoldingCard({ v, onRemove }: { v: ValuedHolding; onRemove?: (id: string) => void }) {
+function HoldingCard({ v, onRemove, onUpdate }: { v: ValuedHolding; onRemove?: (id: string) => void; onUpdate?: (id: string, patch: Partial<Holding>) => void }) {
   const k = v.holding.key;
+  const h = v.holding;
+  const [edit, setEdit] = useState(false);
+  const [paid, setPaid] = useState(h.acquiredPrice != null ? String(h.acquiredPrice) : "");
+  const [date, setDate] = useState(h.acquiredAt ?? "");
+  const [where, setWhere] = useState(h.acquiredFrom ?? "");
   const val = v.fairValue ? `$${Math.round(v.fairValue.point).toLocaleString()}` : "—";
   const up = (v.trendPct ?? 0) >= 0;
   const trend = v.trendPct != null ? `${up ? "▲" : "▼"} ${Math.abs(v.trendPct * 100).toFixed(1)}%/mo` : "";
   const plUp = (v.unrealizedPL ?? 0) >= 0;
   const pl = v.unrealizedPL != null ? `${plUp ? "+" : "−"}$${Math.abs(Math.round(v.unrealizedPL)).toLocaleString()}` : "";
+  const save = () => {
+    const n = paid.trim() ? Number(paid.replace(/[^0-9.]/g, "")) : undefined;
+    onUpdate?.(h.id, {
+      acquiredPrice: n != null && Number.isFinite(n) ? n : undefined,
+      acquiredAt: date.trim() || undefined,
+      acquiredFrom: where.trim() || undefined,
+    });
+    setEdit(false);
+  };
   return (
-    <View style={styles.holdingRow}>
-      <CardImage uri={v.holding.imageUrl} label={`${k.grader} ${k.grade}`} size={52} />
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={styles.holdingName} numberOfLines={1}>
-          {k.set}
-          {k.number ? ` #${k.number}` : ""}
-          {k.variant ? ` ${k.variant}` : ""}
-        </Text>
-        <Text style={styles.holdingSub}>
-          {k.grader} {k.grade}
-          {v.holding.cert ? ` · cert ${v.holding.cert}` : ""}
-        </Text>
-        {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
+    <View style={{ marginBottom: 7 }}>
+      <View style={[styles.holdingRow, { marginBottom: 0, borderBottomLeftRadius: edit ? 0 : 8, borderBottomRightRadius: edit ? 0 : 8 }]}>
+        <CardImage uri={h.imageUrl} label={`${k.grade}`} size={44} />
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={styles.holdingName} numberOfLines={1}>
+            {k.set}
+            {k.number ? ` #${k.number}` : ""}
+            {k.variant ? ` ${k.variant}` : ""}
+          </Text>
+          <Text style={styles.holdingSub} numberOfLines={1}>
+            {k.grader} {k.grade}
+            {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
+            {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
+          </Text>
+          {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
+        </View>
+        <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+          <Text style={styles.holdingVal}>{val}</Text>
+          {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
+        </View>
+        {onUpdate ? (
+          <Pressable onPress={() => setEdit((e) => !e)} hitSlop={8} style={styles.holdingEdit} accessibilityLabel="Edit purchase details">
+            <Ionicons name="create-outline" size={16} color={edit ? C.accent : C.muted} />
+          </Pressable>
+        ) : null}
+        {onRemove ? (
+          <Pressable onPress={() => onRemove(h.id)} hitSlop={10} style={styles.holdingRemove} accessibilityLabel="Remove card">
+            <Text style={styles.holdingRemoveText}>✕</Text>
+          </Pressable>
+        ) : null}
       </View>
-      <View style={{ alignItems: "flex-end" }}>
-        <Text style={styles.holdingVal}>{val}</Text>
-        {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
-      </View>
-      {onRemove ? (
-        <Pressable onPress={() => onRemove(v.holding.id)} hitSlop={10} style={styles.holdingRemove} accessibilityLabel="Remove card">
-          <Text style={styles.holdingRemoveText}>✕</Text>
-        </Pressable>
+      {edit ? (
+        <View style={styles.editPanel}>
+          <View style={styles.editRow}>
+            <Text style={styles.editLabel}>Price paid</Text>
+            <TextInput value={paid} onChangeText={setPaid} keyboardType="numeric" placeholder="$ — optional" placeholderTextColor={C.muted} style={styles.editInput} />
+          </View>
+          <View style={styles.editRow}>
+            <Text style={styles.editLabel}>Date</Text>
+            <TextInput value={date} onChangeText={setDate} placeholder="optional · e.g. 2026-06" placeholderTextColor={C.muted} style={styles.editInput} />
+          </View>
+          <View style={styles.editRow}>
+            <Text style={styles.editLabel}>Where</Text>
+            <TextInput value={where} onChangeText={setWhere} autoCapitalize="words" placeholder="optional · e.g. eBay, card show" placeholderTextColor={C.muted} style={styles.editInput} />
+          </View>
+          <Pressable style={styles.editSave} onPress={save}>
+            <Text style={styles.editSaveText}>Save details</Text>
+          </Pressable>
+        </View>
       ) : null}
     </View>
   );
@@ -1342,8 +1394,15 @@ const styles = StyleSheet.create({
   holdingTrend: { fontSize: 12, fontWeight: "600", marginTop: 3, fontFamily: MONO },
   holdingVal: { color: C.ink, fontSize: 16, fontWeight: "800", fontFamily: MONO },
   holdingPL: { fontSize: 12, fontWeight: "600", marginTop: 3, fontFamily: MONO },
-  holdingRemove: { marginLeft: 8, padding: 4 },
+  holdingEdit: { marginLeft: 8, padding: 4 },
+  holdingRemove: { marginLeft: 6, padding: 4 },
   holdingRemoveText: { color: C.muted, fontSize: 14, fontWeight: "700" },
+  editPanel: { backgroundColor: C.panel2, borderWidth: 1, borderTopWidth: 0, borderColor: C.line, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, paddingHorizontal: 10, paddingTop: 4, paddingBottom: 10, gap: 8 },
+  editRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  editLabel: { color: C.muted, fontSize: 12, width: 70 },
+  editInput: { flex: 1, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, color: C.ink, fontSize: 13, fontFamily: MONO },
+  editSave: { backgroundColor: C.accent, borderRadius: 8, paddingVertical: 9, alignItems: "center", marginTop: 2 },
+  editSaveText: { color: "#04122b", fontWeight: "700", fontSize: 13 },
 
   scanBox: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.accent, borderRadius: 12, padding: 14, marginBottom: 14 },
   scanTitle: { color: C.ink, fontSize: 16, fontWeight: "700" },
