@@ -194,7 +194,12 @@ export default function App() {
         if (!Array.isArray(b.holdings)) return;
         const byId = new Map(b.holdings.map((v) => [v.holding.id, v]));
         setHoldings((prev) => {
-          const next = prev.map((v) => byId.get(v.holding.id) ?? v);
+          // Only replace when the fresh copy actually has a value — never blank an
+          // existing value if the API hiccups or can't price a card.
+          const next = prev.map((v) => {
+            const u = byId.get(v.holding.id);
+            return u && u.fairValue ? u : v;
+          });
           AsyncStorage.setItem("trdr.library", JSON.stringify(next)).catch(() => {});
           return next;
         });
@@ -340,7 +345,10 @@ export default function App() {
     revalueLibrary(holdings);
     setTimeout(() => setRefreshing(false), 1200);
   };
-  const refreshCtl = <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} progressBackgroundColor={C.panel} />;
+  // RN's RefreshControl doesn't work on web (and lets the browser's native
+  // pull-to-refresh reload the page). Native gets the pull gesture; web uses the
+  // header refresh button below.
+  const refreshCtl = Platform.OS === "web" ? undefined : <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} progressBackgroundColor={C.panel} />;
 
   // Real eBay market data vs model estimates; real vision backend vs none.
   const marketReal = !!caps.market && caps.market !== "mock";
@@ -378,6 +386,9 @@ export default function App() {
       <Text style={styles.brand}>TRDR</Text>
       {kind !== "phone" ? <Text style={styles.sub}>{plain(pro, "card deals & values", "graded-card mispricing terminal")}</Text> : null}
       <View style={styles.headerControls}>
+        <Pressable onPress={onRefresh} style={styles.ctrlChip} accessibilityLabel="Refresh" disabled={refreshing}>
+          <Ionicons name="refresh" size={15} color={refreshing ? C.accent : C.muted} />
+        </Pressable>
         <AuthButton />
         <Pressable onPress={cycleSize} style={styles.ctrlChip} accessibilityLabel="Text size">
           <Text style={[styles.ctrlText, { fontSize: textScale > 1 ? 15 : 13 }]}>A</Text>
@@ -1082,24 +1093,26 @@ function HoldingCard({ v, onRemove, onUpdate }: { v: ValuedHolding; onRemove?: (
   return (
     <View style={{ marginBottom: 7 }}>
       <View style={[styles.holdingRow, { marginBottom: 0, borderBottomLeftRadius: edit ? 0 : 8, borderBottomRightRadius: edit ? 0 : 8 }]}>
-        <CardImage uri={h.imageUrl} label={`${k.grade}`} size={44} />
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.holdingName} numberOfLines={1}>
-            {k.set}
-            {k.number ? ` #${k.number}` : ""}
-            {k.variant ? ` ${k.variant}` : ""}
-          </Text>
-          <Text style={styles.holdingSub} numberOfLines={1}>
-            {k.grader} {k.grade}
-            {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
-            {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
-          </Text>
-          {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
-        </View>
-        <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
-          <Text style={styles.holdingVal}>{val}</Text>
-          {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
-        </View>
+        <Pressable style={{ flexDirection: "row", alignItems: "center", flex: 1 }} onPress={onUpdate ? () => setEdit((e) => !e) : undefined} accessibilityLabel="Edit purchase details">
+          <CardImage uri={h.imageUrl} label={`${k.grade}`} size={44} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.holdingName} numberOfLines={1}>
+              {k.set}
+              {k.number ? ` #${k.number}` : ""}
+              {k.variant ? ` ${k.variant}` : ""}
+            </Text>
+            <Text style={styles.holdingSub} numberOfLines={1}>
+              {k.grader} {k.grade}
+              {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
+              {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
+            </Text>
+            {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
+          </View>
+          <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+            <Text style={styles.holdingVal}>{val}</Text>
+            {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
+          </View>
+        </Pressable>
         {onUpdate ? (
           <Pressable onPress={() => setEdit((e) => !e)} hitSlop={8} style={styles.holdingEdit} accessibilityLabel="Edit purchase details">
             <Ionicons name="create-outline" size={16} color={edit ? C.accent : C.muted} />
