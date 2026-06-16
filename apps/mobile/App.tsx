@@ -1,4 +1,4 @@
-import { Children, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Children, createContext, useContext, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Image, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -457,9 +457,9 @@ export default function App() {
   // Phone / tablet: content with a bottom tab bar (thumb reach, iOS pattern).
   return shell(
     <>
-      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 12 }} refreshControl={refreshCtl}>
+      <RefreshableScroll refreshing={refreshing} onRefresh={onRefresh} refreshCtl={refreshCtl} style={styles.scroll} contentContainerStyle={{ padding: kind === "tablet" ? 20 : 16, paddingTop: 12 }}>
         {body}
-      </ScrollView>
+      </RefreshableScroll>
       <View style={styles.bottomBar}>
         {tabs.map((t) => (
           <Pressable key={t.key} style={styles.bottomTab} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }}>
@@ -541,6 +541,94 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
     <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
       <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
     </Pressable>
+  );
+}
+
+// Pull-to-refresh that works on iOS web (RN's RefreshControl doesn't). Native
+// uses the real RefreshControl; web tracks a downward drag at the top of the
+// scroll and fires onRefresh, with a small "pull ↓ / release ↑" indicator.
+function RefreshableScroll({
+  refreshing,
+  onRefresh,
+  refreshCtl,
+  style,
+  contentContainerStyle,
+  children,
+}: {
+  refreshing: boolean;
+  onRefresh: () => void;
+  refreshCtl: ReactElement | undefined;
+  style?: object;
+  contentContainerStyle?: object;
+  children: ReactNode;
+}) {
+  const atTop = useRef(true);
+  const [pull, setPull] = useState(0);
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+  const refreshingRef = useRef(refreshing);
+  refreshingRef.current = refreshing;
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const el = document.getElementById("trdr-pull-wrap");
+    if (!el) return;
+    let startY: number | null = null;
+    const y = (e: TouchEvent) => e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY ?? null;
+    const ts = (e: TouchEvent) => {
+      startY = atTop.current ? y(e) : null;
+    };
+    const tm = (e: TouchEvent) => {
+      if (startY == null) return;
+      const yy = y(e);
+      if (yy == null) return;
+      const d = yy - startY;
+      setPull(d > 0 ? Math.min(d * 0.5, 80) : 0);
+    };
+    const te = () => {
+      setPull((p) => {
+        if (p > 50 && !refreshingRef.current) onRefreshRef.current();
+        return 0;
+      });
+      startY = null;
+    };
+    el.addEventListener("touchstart", ts, { passive: true });
+    el.addEventListener("touchmove", tm, { passive: true });
+    el.addEventListener("touchend", te, { passive: true });
+    el.addEventListener("touchcancel", te, { passive: true });
+    return () => {
+      el.removeEventListener?.("touchstart", ts);
+      el.removeEventListener?.("touchmove", tm);
+      el.removeEventListener?.("touchend", te);
+      el.removeEventListener?.("touchcancel", te);
+    };
+  }, []);
+
+  if (Platform.OS !== "web") {
+    return (
+      <ScrollView style={style} contentContainerStyle={contentContainerStyle} refreshControl={refreshCtl as never}>
+        {children}
+      </ScrollView>
+    );
+  }
+  return (
+    <View nativeID="trdr-pull-wrap" style={{ flex: 1 }}>
+      {pull > 0 || refreshing ? (
+        <View style={{ height: refreshing ? 36 : pull, alignItems: "center", justifyContent: "flex-end", paddingBottom: 6 }}>
+          <Text style={{ color: C.accent, fontSize: 12, fontFamily: MONO }}>{refreshing ? "refreshing…" : pull > 50 ? "release ↑" : "pull ↓"}</Text>
+        </View>
+      ) : null}
+      <ScrollView
+        style={style}
+        contentContainerStyle={contentContainerStyle}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          atTop.current = (e.nativeEvent.contentOffset?.y ?? 0) <= 0;
+        }}
+      >
+        {children}
+      </ScrollView>
+    </View>
   );
 }
 
