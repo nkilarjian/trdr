@@ -377,7 +377,7 @@ export default function App() {
       {tab === "scan" && <ScanScreen canScan={visionReal} scan={FALLBACK.scan} onAddScanned={addScanned} onDone={() => setTab("library")} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
-        {source === "live" ? (marketReal ? "Live eBay prices" : "Estimated values") : "Demo data"} · {deviceLabel} layout
+        {source === "live" ? (marketReal ? "Live sold prices" : "Estimated values") : "Demo data"} · {deviceLabel} layout
         {pro ? ` · ${passport.fairValue.compCount} clean comps` : ""}
       </Text>
     </View>

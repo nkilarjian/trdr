@@ -25,3 +25,4 @@ export interface MarketDataProvider {
 
 export { MockMarketDataProvider } from "./mock.js";
 export { RealMarketDataProvider } from "./real.js";
+export { TheCardApiMarketProvider } from "./thecardapi.js";

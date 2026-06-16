@@ -56,7 +56,7 @@ app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });
 // The app reads this to only surface real features (e.g. photo-scan needs vision)
 // and to label values "live" vs "estimate" honestly.
 const capabilities = {
-  market: process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET ? "ebay" : "mock",
+  market: process.env.THECARDAPI_KEY ? "thecardapi" : process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET ? "ebay" : "mock",
   vision: process.env.VISION_BACKEND === "claude" && process.env.ANTHROPIC_API_KEY ? "claude" : "mock",
   grading: process.env.PSA_API_TOKEN || process.env.CGC_API_TOKEN || process.env.SGC_API_TOKEN || process.env.BGS_API_TOKEN ? "real" : "mock",
 };
