@@ -269,15 +269,18 @@ export default function App() {
   const persistLib = (h: ValuedHolding[]) => AsyncStorage.setItem("trdr.library", JSON.stringify(h)).catch(() => {});
   const addScanned = (valued: ValuedHolding[]) =>
     setHoldings((prev) => {
-      const seen = new Set(prev.map((v) => v.holding.id));
-      const next = [...prev, ...valued.filter((v) => !seen.has(v.holding.id))];
+      // The scanner reuses ids (h-v0, h-v1…) every scan, so the old dedupe-by-id
+      // dropped every scan after the first. Stamp a fresh unique id on each.
+      const stamp = Date.now();
+      const fresh = valued.map((v, i) => ({ ...v, holding: { ...v.holding, id: `h-scan-${stamp}-${i}` } }));
+      const next = [...prev, ...fresh];
       persistLib(next);
       return next;
     });
   const addHolding = (text: string) => {
     if (!text.trim()) return;
     setHoldings((prev) => {
-      const next = [...prev, { holding: parseHolding(text, `h-${Date.now()}`) }];
+      const next = [...prev, { holding: parseHolding(text, `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`) }];
       persistLib(next);
       revalueLibrary(next); // fetch a live value for the newly added card
       return next;
