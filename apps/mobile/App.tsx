@@ -1181,26 +1181,24 @@ function HoldingCard({ v, onRemove, onUpdate }: { v: ValuedHolding; onRemove?: (
   return (
     <View style={{ marginBottom: 7 }}>
       <View style={[styles.holdingRow, { marginBottom: 0, borderBottomLeftRadius: edit ? 0 : 8, borderBottomRightRadius: edit ? 0 : 8 }]}>
-        <Pressable style={{ flexDirection: "row", alignItems: "center", flex: 1 }} onPress={onUpdate ? () => setEdit((e) => !e) : undefined} accessibilityLabel="Edit purchase details">
-          <CardImage uri={h.imageUrl} label={`${k.grade}`} size={44} />
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.holdingName} numberOfLines={1}>
-              {k.set}
-              {k.number ? ` #${k.number}` : ""}
-              {k.variant ? ` ${k.variant}` : ""}
-            </Text>
-            <Text style={styles.holdingSub} numberOfLines={1}>
-              {k.grader} {k.grade}
-              {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
-              {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
-            </Text>
-            {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
-          </View>
-          <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
-            <Text style={styles.holdingVal}>{val}</Text>
-            {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
-          </View>
-        </Pressable>
+        <CardImage uri={h.imageUrl} label={`${k.grade}`} size={44} />
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={styles.holdingName} numberOfLines={1}>
+            {k.set}
+            {k.number ? ` #${k.number}` : ""}
+            {k.variant ? ` ${k.variant}` : ""}
+          </Text>
+          <Text style={styles.holdingSub} numberOfLines={1}>
+            {k.grader} {k.grade}
+            {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
+            {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
+          </Text>
+          {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
+        </View>
+        <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+          <Text style={styles.holdingVal}>{val}</Text>
+          {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
+        </View>
         {onUpdate ? (
           <Pressable onPress={() => setEdit((e) => !e)} hitSlop={8} style={styles.holdingEdit} accessibilityLabel="Edit purchase details">
             <Ionicons name="create-outline" size={16} color={edit ? C.accent : C.muted} />
