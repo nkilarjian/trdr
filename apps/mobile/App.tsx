@@ -329,7 +329,7 @@ export default function App() {
   const kind: "phone" | "tablet" | "wide" = width >= 1000 ? "wide" : width >= 700 ? "tablet" : "phone";
   const columns = kind === "wide" ? 3 : kind === "tablet" ? 2 : 1;
   const maxWidth = kind === "wide" ? 1080 : kind === "tablet" ? 760 : undefined;
-  const deviceLabel = Platform.OS === "web" ? "web" : kind === "tablet" ? "tablet" : "phone";
+  const deviceLabel = kind === "wide" ? "desktop" : kind;
 
   const tabs: { key: typeof tab; label: string; icon: IconName }[] = [
     { key: "alerts", label: `Deals · ${alerts.length}`, icon: "pricetags-outline" },
