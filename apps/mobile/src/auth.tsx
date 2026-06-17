@@ -37,6 +37,7 @@ function AuthButtonInner() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { startSSOFlow } = useSSO();
   const [open, setOpen] = useState(false);
 
   if (isSignedIn) {
@@ -49,14 +50,25 @@ function AuthButtonInner() {
       </Pressable>
     );
   }
-  // Production Clerk: on web, use the HOSTED Account Portal (accounts.<domain>).
-  // It shares the app's root domain now, so the session returns seamlessly — the
-  // proper password/Google "stays signed in" experience. Native (and any fallback)
-  // use the in-app modal. Sign-in is optional; the app works fully as a guest.
-  const startSignIn = () => {
-    const url = Platform.OS === "web" ? hostedSignInUrl() : null;
-    if (url) window.location.assign(url);
-    else setOpen(true);
+  // One-tap Google is the primary path — no email codes, and the most reliable
+  // "stays signed in" experience. If Google can't start (popup blocked, user
+  // cancels), fall back to the hosted Account Portal, then the in-app email
+  // modal. Sign-in is optional; the app works fully as a guest.
+  const startSignIn = async () => {
+    if (Platform.OS === "web") {
+      try {
+        const { createdSessionId, setActive } = await startSSOFlow({ strategy: "oauth_google" });
+        if (createdSessionId && setActive) await setActive({ session: createdSessionId });
+        return;
+      } catch {
+        const url = hostedSignInUrl();
+        if (url) {
+          window.location.assign(url);
+          return;
+        }
+      }
+    }
+    setOpen(true);
   };
   return (
     <>
