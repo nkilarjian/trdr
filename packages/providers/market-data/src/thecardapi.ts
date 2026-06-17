@@ -33,7 +33,10 @@ export class TheCardApiMarketProvider implements MarketDataProvider {
   }
 
   async getSoldComps(key: CanonicalCardKey, window: DateWindow): Promise<SoldComp[]> {
-    const q = [key.set, key.number ? `#${key.number}` : "", key.variant].filter(Boolean).join(" ").trim();
+    // Build a full-text query that matches eBay-style sale titles: strip sport
+    // words ("basketball"…) that never appear in titles, and drop the '#'.
+    const setClean = key.set.replace(/\b(basketball|football|baseball|hockey|soccer|racing|f1)\b/gi, "").replace(/\s+/g, " ").trim();
+    const q = [setClean, key.number, key.variant].filter(Boolean).join(" ").trim();
     if (q.length < 4) return this.base.getSoldComps(key, window); // API needs ≥4 chars
     const params = new URLSearchParams();
     params.set("q", q);
