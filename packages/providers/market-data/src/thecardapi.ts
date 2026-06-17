@@ -14,9 +14,19 @@ interface TcaSale {
   price?: number | string;
   sale_date?: string;
   sold_at?: string;
+  listing_type?: string;
+  seller?: string;
+  feedback?: number;
   grade?: string;
   grader?: string;
   title?: string;
+}
+
+// Truncate microsecond ISO ("…28.552192+00:00") to a JS-parseable ms ISO.
+function normalizeIso(s?: string): string {
+  if (!s) return new Date().toISOString();
+  const d = new Date(s.replace(/(\.\d{3})\d+/, "$1"));
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
 export class TheCardApiMarketProvider implements MarketDataProvider {
@@ -57,10 +67,13 @@ export class TheCardApiMarketProvider implements MarketDataProvider {
         .map((s) => ({
           itemId: String(s.id ?? ""),
           soldPrice: Number(s.price ?? 0),
-          soldAt: s.sold_at ?? (s.sale_date ? `${s.sale_date}T00:00:00Z` : new Date().toISOString()),
-          saleType: "auction-close" as const, // real closed sale (model weights these high)
+          soldAt: normalizeIso(s.sold_at ?? (s.sale_date ? `${s.sale_date}T00:00:00Z` : undefined)),
+          saleType: (s.listing_type === "auction" ? "auction-close" : "bin-accepted-offer") as SoldComp["saleType"],
           qty: 1,
-          seller: { id: "thecardapi" },
+          // Real seller + feedback so the shill screen doesn't drop legit auction
+          // comps (it flags auction-close wins by <10-feedback accounts). These are
+          // curated real sales, so default unknown feedback high rather than 0.
+          seller: { id: String(s.seller ?? "thecardapi"), feedbackScore: typeof s.feedback === "number" ? s.feedback : 1000, feedbackPct: 100 },
           rawTitle: s.title ?? "",
         }))
         .filter((c) => c.soldPrice > 0);
