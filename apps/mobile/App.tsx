@@ -986,27 +986,29 @@ function tagColor(t: string): string {
 }
 
 function HitCard({ hit }: { hit: WishHit }) {
-  const primary = hit.tags[0];
+  const fv = hit.fairBand?.point ?? 0;
+  const under = fv > 0 && hit.currentPrice > 0 ? Math.round((1 - hit.currentPrice / fv) * 100) : 0;
   return (
-    <Pressable style={styles.deal} onPress={() => Linking.openURL(hit.deepLink)}>
-      <CardImage uri={hit.imageUrl} label={hit.buyingOption === "AUCTION" ? "AUC" : "BIN"} size={44} />
-      <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-        <Text style={styles.dealName} numberOfLines={1}>
+    <Pressable style={styles.itemCard} onPress={() => Linking.openURL(hit.deepLink)}>
+      <CardImage uri={hit.imageUrl} label={hit.buyingOption === "AUCTION" ? "Auction" : "BIN"} size={66} />
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
           {hit.title}
         </Text>
-        <Text style={styles.dealMeta} numberOfLines={1}>
-          {hit.fairBand ? `fv ${money(hit.fairBand.point)} · ` : ""}
-          {hit.buyingOption === "AUCTION" ? "bid" : "ask"} {money(hit.currentPrice)} · int {Math.round(hit.interest * 100)}%
+        <Text style={styles.cardSub} numberOfLines={1}>
+          {hit.buyingOption === "AUCTION" ? "Auction" : "Buy It Now"}
+          {fv > 0 ? ` · value $${money(fv)}` : ""}
         </Text>
+        <View style={styles.cardPriceRow}>
+          <Text style={styles.cardPrice}>${money(hit.currentPrice)}</Text>
+          {under > 0 ? (
+            <View style={styles.underPill}>
+              <Text style={styles.underPillText}>{under}% under value</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
-      <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
-        <Text style={styles.price}>${money(hit.currentPrice)}</Text>
-        {primary ? (
-          <View style={[styles.sigTag, { borderColor: tagColor(primary) + "55" }]}>
-            <Text style={[styles.sigTagText, { color: tagColor(primary) }]}>{primary}</Text>
-          </View>
-        ) : null}
-      </View>
+      <Ionicons name="open-outline" size={15} color={C.muted} style={{ alignSelf: "center" }} />
     </Pressable>
   );
 }
@@ -1267,6 +1269,8 @@ function LibraryScreen({
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
   const [manual, setManual] = useState("");
   const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
+  const hasPL = holdings.some((v) => v.unrealizedPL != null);
+  const totalPL = holdings.reduce((s, v) => s + (v.unrealizedPL ?? 0), 0);
   const isWeb = Platform.OS === "web";
   const submitManual = () => {
     onAddHolding(manual);
@@ -1309,6 +1313,14 @@ function LibraryScreen({
           <Text style={styles.libSumV}>${Math.round(total).toLocaleString()}</Text>
           <Text style={styles.libSumL}>est. value</Text>
         </View>
+        {hasPL ? (
+          <View>
+            <Text style={[styles.libSumV, { color: totalPL >= 0 ? C.green : C.red }]}>
+              {totalPL >= 0 ? "+" : "−"}${Math.abs(Math.round(totalPL)).toLocaleString()}
+            </Text>
+            <Text style={styles.libSumL}>profit/loss</Text>
+          </View>
+        ) : null}
       </View>
 
       <Text style={styles.libAddLabel}>Add a card</Text>

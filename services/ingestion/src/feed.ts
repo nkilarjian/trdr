@@ -81,14 +81,34 @@ export async function valueCard(providers: Providers, key: CanonicalCardKey, opt
   return { key, fairValue, listings, pop, recent, imageUrl: listings[0]?.slabPhotoUrls[0] };
 }
 
+// A graded slab priced far below a well-supported fair value is almost always a
+// MISMATCH (a base card matched to a parallel, a raw card, the wrong number),
+// not a real steal — so don't surface it as a deal.
+const DEAL_PRICE_FLOOR = 0.4; // drop listings priced under 40% of fair value
+
 export function alertsFrom(v: CardValuation, opts: { epnCampaignId?: string; nowMs?: number }): Alert[] {
   const out: Alert[] = [];
+  const fv = v.fairValue.point;
   for (const listing of v.listings) {
+    // The listing title must actually describe this card's parallel (e.g. a
+    // "Silver" key shouldn't match a base Prizm listing) — the #1 false positive.
+    if (!listingMatchesKey(listing, v.key)) continue;
     const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
     const a = buildAlert({ listing, key: v.key, fairValue: v.fairValue, sellerRisk, epnCampaignId: opts.epnCampaignId, nowMs: opts.nowMs });
-    if (a) out.push(a);
+    if (!a) continue;
+    if (fv > 0 && v.fairValue.compCount >= 5 && a.predictedClose < DEAL_PRICE_FLOOR * fv) continue; // too good to be real
+    out.push(a);
   }
   return out;
+}
+
+/** Cheap guard against eBay search false positives: the listing title must
+ *  mention the key's parallel/variant words (when it has one). */
+function listingMatchesKey(listing: ActiveListing, key: CanonicalCardKey): boolean {
+  if (!key.variant) return true;
+  const title = (listing.title ?? "").toLowerCase();
+  const words = key.variant.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+  return words.every((w) => title.includes(w));
 }
 
 export function passportFrom(v: CardValuation, cert: string | null): PassportView {
