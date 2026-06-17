@@ -62,62 +62,6 @@ const capabilities = {
 };
 app.get("/health", async () => ({ ok: true, providers: capabilities }));
 
-// TEMP debug: see what The Card API actually returns (uses server key, doesn't expose it).
-app.get<{ Querystring: { q?: string; grader?: string; grade?: string } }>("/debug/tca", async (req) => {
-  const key = process.env.THECARDAPI_KEY;
-  if (!key) return { error: "THECARDAPI_KEY not set" };
-  const params = new URLSearchParams();
-  params.set("q", req.query.q ?? "2018 Panini Prizm Luka Doncic 280");
-  if (req.query.grader) params.set("grader", req.query.grader);
-  if (req.query.grade) params.set("grade", req.query.grade);
-  params.set("limit", "5");
-  try {
-    const res = await fetch(`https://thecardapi.com/api/v1/market/sales?${params}`, { headers: { "x-market-api-key": key } });
-    const text = await res.text();
-    let count = -1;
-    let prices: number[] = [];
-    let keys: string[] = [];
-    try {
-      const j = JSON.parse(text) as { data?: { price?: number; grade?: unknown; grader?: unknown }[] };
-      count = (j.data ?? []).length;
-      prices = (j.data ?? []).slice(0, 5).map((d) => Number(d.price));
-      keys = Object.keys((j.data ?? [])[0] ?? {});
-    } catch {
-      /* non-JSON */
-    }
-    return { url: `/sales?${params}`, status: res.status, ok: res.ok, count, prices, fields: keys, head: text.slice(0, 120) };
-  } catch (e) {
-    return { error: String((e as Error).message) };
-  }
-});
-
-// TEMP: run the ACTUAL provider chain (Accumulating → TheCardApi → fetch) that valuation uses.
-app.get<{ Querystring: { set?: string; number?: string; variant?: string; grader?: string; grade?: string } }>("/debug/provider", async (req) => {
-  const key = {
-    set: req.query.set ?? "2018 Panini Prizm Basketball",
-    number: req.query.number ?? "280",
-    variant: req.query.variant,
-    grader: (req.query.grader ?? "PSA") as Grader,
-    grade: Number(req.query.grade ?? 10),
-  };
-  const window = { fromIso: new Date(Date.now() - 180 * 86_400_000).toISOString(), toIso: new Date().toISOString() };
-  try {
-    const comps = await providers.market.getSoldComps(key, window);
-    const valued = await valueLibrary(providers, [{ id: "dbg", key }]);
-    const fv = valued[0]?.fairValue;
-    return {
-      marketType: capabilities.market,
-      direct_getSoldComps: comps.length,
-      directSample: comps.slice(0, 3).map((c) => ({ price: c.soldPrice, at: c.soldAt })),
-      valueLibrary_hasValue: !!fv,
-      valueLibrary_point: fv ? Math.round(fv.point) : null,
-      valueLibrary_compCount: fv?.compCount ?? 0,
-    };
-  } catch (e) {
-    return { error: String((e as Error).message) };
-  }
-});
-
 // ── eBay Marketplace Account Deletion/Closure notifications ──
 // Required to activate eBay production keys. eBay first sends GET ?challenge_code
 // and expects { challengeResponse: sha256(challengeCode + token + endpoint) };
