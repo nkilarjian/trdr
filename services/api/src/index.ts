@@ -103,7 +103,16 @@ app.get<{ Querystring: { set?: string; number?: string; variant?: string; grader
   const window = { fromIso: new Date(Date.now() - 180 * 86_400_000).toISOString(), toIso: new Date().toISOString() };
   try {
     const comps = await providers.market.getSoldComps(key, window);
-    return { marketType: capabilities.market, compCount: comps.length, sample: comps.slice(0, 4).map((c) => ({ price: c.soldPrice, at: c.soldAt, type: c.saleType, seller: c.seller?.id })) };
+    const valued = await valueLibrary(providers, [{ id: "dbg", key }]);
+    const fv = valued[0]?.fairValue;
+    return {
+      marketType: capabilities.market,
+      direct_getSoldComps: comps.length,
+      directSample: comps.slice(0, 3).map((c) => ({ price: c.soldPrice, at: c.soldAt })),
+      valueLibrary_hasValue: !!fv,
+      valueLibrary_point: fv ? Math.round(fv.point) : null,
+      valueLibrary_compCount: fv?.compCount ?? 0,
+    };
   } catch (e) {
     return { error: String((e as Error).message) };
   }
