@@ -74,7 +74,18 @@ app.get<{ Querystring: { q?: string; grader?: string; grade?: string } }>("/debu
   try {
     const res = await fetch(`https://thecardapi.com/api/v1/market/sales?${params}`, { headers: { "x-market-api-key": key } });
     const text = await res.text();
-    return { url: `/sales?${params}`, status: res.status, ok: res.ok, body: text.slice(0, 600) };
+    let count = -1;
+    let prices: number[] = [];
+    let keys: string[] = [];
+    try {
+      const j = JSON.parse(text) as { data?: { price?: number; grade?: unknown; grader?: unknown }[] };
+      count = (j.data ?? []).length;
+      prices = (j.data ?? []).slice(0, 5).map((d) => Number(d.price));
+      keys = Object.keys((j.data ?? [])[0] ?? {});
+    } catch {
+      /* non-JSON */
+    }
+    return { url: `/sales?${params}`, status: res.status, ok: res.ok, count, prices, fields: keys, head: text.slice(0, 120) };
   } catch (e) {
     return { error: String((e as Error).message) };
   }
