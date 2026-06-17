@@ -102,6 +102,19 @@ export function alertsFrom(v: CardValuation, opts: { epnCampaignId?: string; now
   return out;
 }
 
+/** Lowest current ask among listings that genuinely match this card — applies
+ *  the same match + too-good-to-be-true screen as the deals, so the "watching"
+ *  view never shows a mismatched-listing price as the real lowest ask. */
+export function lowestLegitAsk(v: CardValuation): number | undefined {
+  const fv = v.fairValue.point;
+  const trusted = fv > 0 && v.fairValue.compCount >= 5;
+  const asks = v.listings
+    .filter((l) => listingMatchesKey(l, v.key))
+    .map((l) => l.currentPrice)
+    .filter((p) => p > 0 && !(trusted && p < DEAL_PRICE_FLOOR * fv));
+  return asks.length ? Math.min(...asks) : undefined;
+}
+
 /** Cheap guard against eBay search false positives: the listing title must
  *  mention the key's card number and parallel/variant (when present). */
 function listingMatchesKey(listing: ActiveListing, key: CanonicalCardKey): boolean {

@@ -4,7 +4,7 @@
 // and a passport for the first valued card.
 
 import type { Alert, CanonicalCardKey, FairValue, Grader, WishSpec } from "@trdr/core";
-import { alertsFrom, passportFrom, valueCard, type PassportView } from "./feed.js";
+import { alertsFrom, lowestLegitAsk, passportFrom, valueCard, type PassportView } from "./feed.js";
 import { scanWishlist, type WishlistResult } from "./wishlist.js";
 import type { Providers } from "./providers.js";
 
@@ -58,8 +58,7 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
     const sig = `${key.set}|${key.number}|${key.variant ?? ""}|${key.grader}|${key.grade}`;
     if (v.fairValue.compCount > 0 && !watchedSeen.has(sig)) {
       watchedSeen.add(sig);
-      const asks = v.listings.map((l) => l.currentPrice).filter((p) => p > 0);
-      watching.push({ key, fairValue: v.fairValue, imageUrl: v.imageUrl, lowestAsk: asks.length ? Math.min(...asks) : undefined });
+      watching.push({ key, fairValue: v.fairValue, imageUrl: v.imageUrl, lowestAsk: lowestLegitAsk(v) });
     }
 
     for (const a of alertsFrom(v, { epnCampaignId: opts.epnCampaignId, nowMs })) {
