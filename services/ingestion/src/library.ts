@@ -69,22 +69,38 @@ export async function valueLibrary(
 ): Promise<ValuedHolding[]> {
   const out: ValuedHolding[] = [];
   for (const h of holdings) {
-    const comps = await providers.market.getSoldComps(h.key, {
-      fromIso: new Date(nowMs - 180 * DAY).toISOString(),
-      toIso: new Date(nowMs).toISOString(),
-    });
+    // Manually-added cards have no photo. Pull a real one from a live listing so
+    // the Library looks like a collection, not grey placeholders.
+    const [comps, imageUrl] = await Promise.all([
+      providers.market.getSoldComps(h.key, {
+        fromIso: new Date(nowMs - 180 * DAY).toISOString(),
+        toIso: new Date(nowMs).toISOString(),
+      }),
+      h.imageUrl ? Promise.resolve(h.imageUrl) : firstListingImage(providers, h.key),
+    ]);
+    const holding = imageUrl && !h.imageUrl ? { ...h, imageUrl } : h;
 
     if (!comps.length) {
-      out.push({ holding: h });
+      out.push({ holding });
       continue;
     }
 
     const fairValue = computeFairValue({ comps, now: nowMs });
     const trendPct = thirtyDayTrend(comps, fairValue.point, nowMs);
     const unrealizedPL = h.acquiredPrice != null ? fairValue.point - h.acquiredPrice : undefined;
-    out.push({ holding: h, fairValue, trendPct, unrealizedPL });
+    out.push({ holding, fairValue, trendPct, unrealizedPL });
   }
   return out;
+}
+
+/** Best-effort representative photo for a card, from a current live listing. */
+async function firstListingImage(providers: Providers, key: CanonicalCardKey): Promise<string | undefined> {
+  try {
+    const listings = await providers.market.searchActive({ key });
+    return listings.find((l) => l.slabPhotoUrls?.[0])?.slabPhotoUrls[0];
+  } catch {
+    return undefined;
+  }
 }
 
 function thirtyDayTrend(comps: SoldComp[], pointNow: number, nowMs: number): number | undefined {
