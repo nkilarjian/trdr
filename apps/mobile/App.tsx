@@ -1,5 +1,5 @@
 import { Children, createContext, useContext, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -141,9 +141,12 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   // Your wishlist drives everything (deals + wishlist + the watched cards).
   const [specs, setSpecs] = useState<WishSpec[]>(FALLBACK.wishlist.specs);
-  const [alerts, setAlerts] = useState<Alert[]>(FALLBACK.alerts);
+  // With a real backend, start EMPTY and show a loading state — never flash the
+  // seeded demo deals as if they were live (that's what made it look "broken").
+  const [alerts, setAlerts] = useState<Alert[]>(API_BASE ? [] : FALLBACK.alerts);
   const [passport, setPassport] = useState<Passport>(FALLBACK.passport);
-  const [hits, setHits] = useState<WishHit[]>(FALLBACK.wishlist.hits);
+  const [hits, setHits] = useState<WishHit[]>(API_BASE ? [] : FALLBACK.wishlist.hits);
+  const [boardLoaded, setBoardLoaded] = useState(!API_BASE); // no API → the snapshot IS the data
   const [holdings, setHoldings] = useState<ValuedHolding[]>([]); // your library — loaded from the phone
   const [pro, setPro] = useState(false); // Pro mode reveals the quant terms
   const [textScale, setTextScale] = useState(1); // Dynamic Type: app-level text size
@@ -174,9 +177,14 @@ export default function App() {
         setHits(b.wishlist.hits);
         if (b.passport) setPassport(b.passport);
         setSource("live");
+        setBoardLoaded(true);
+        // Cache last-good board so reopening shows real deals instantly (the live
+        // scan takes several seconds; nobody should stare at a blank/old screen).
+        AsyncStorage.setItem("trdr.board", JSON.stringify({ alerts: b.alerts, hits: b.wishlist.hits })).catch(() => {});
       })
       .catch(() => {
-        /* unreachable API → keep the bundled snapshot */
+        // Unreachable/slow API: mark loaded so we stop showing a spinner forever.
+        setBoardLoaded(true);
       });
   };
 
@@ -222,6 +230,21 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    // Show the last real deals immediately (cached) while the live scan re-runs.
+    if (API_BASE) {
+      AsyncStorage.getItem("trdr.board")
+        .then((v) => {
+          if (!active || !v) return;
+          const b = JSON.parse(v) as { alerts?: Alert[]; hits?: WishHit[] };
+          if (b.alerts?.length) {
+            setAlerts(b.alerts);
+            setSource("live");
+            setBoardLoaded(true);
+          }
+          if (b.hits?.length) setHits(b.hits);
+        })
+        .catch(() => {});
+    }
     AsyncStorage.getItem("trdr.wishlist")
       .then((v) => {
         const saved = v ? (JSON.parse(v) as WishSpec[]) : null;
@@ -362,7 +385,7 @@ export default function App() {
 
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
-      {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} onOpenCard={setDetail} />}
+      {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} onOpenCard={setDetail} loading={!boardLoaded} />}
       {tab === "library" && (
         <LibraryScreen
           holdings={holdings}
@@ -379,7 +402,7 @@ export default function App() {
       {tab === "scan" && <ScanScreen canScan={visionReal} scan={FALLBACK.scan} onAddScanned={addScanned} onDone={() => setTab("library")} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
-        {source === "live" ? (marketReal ? "Live sold prices" : "Estimated values") : "Demo data"} · {deviceLabel} layout
+        {!boardLoaded && API_BASE ? "Loading live data…" : source === "live" ? (marketReal ? "Live sold prices" : "Estimated values") : "Demo data"} · {deviceLabel} layout
         {pro ? ` · ${passport.fairValue.compCount} clean comps` : ""}
       </Text>
     </View>
@@ -650,53 +673,60 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
   );
 }
 
-function AlertsFeed({ alerts, columns, pro, onOpenCard }: { alerts: Alert[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void }) {
-  // edge % = how far the current price sits below fair value.
-  const edgeOf = (a: Alert) => {
-    const price = Number(alertVM(a).predictedClose.replace(/[^0-9.]/g, ""));
-    return price > 0 ? (a.fairValue.point - price) / price : 0;
-  };
-  const best = alerts.reduce((m, a) => Math.max(m, edgeOf(a)), 0);
+function AlertsFeed({ alerts, columns, pro, onOpenCard, loading }: { alerts: Alert[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void; loading: boolean }) {
+  // Empty: a clean loading / no-results state — NEVER fake cards.
+  if (!alerts.length) {
+    return (
+      <View>
+        <Text style={styles.colH}>Deals</Text>
+        <View style={styles.emptyBox}>
+          {loading ? <ActivityIndicator color={C.accent} /> : null}
+          <Text style={styles.emptyText}>{loading ? "Finding cards priced under market value…" : "No deals right now. Pull down to refresh."}</Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View>
       <View style={styles.feedHead}>
-        <Text style={styles.colH}>Live deals</Text>
-        <Text style={styles.feedMeta}>
-          {alerts.length} open · best <Text style={{ color: C.green }}>+{Math.round(best * 100)}%</Text>
-        </Text>
+        <Text style={styles.colH}>Deals</Text>
+        <Text style={styles.feedMeta}>{alerts.length} under market value</Text>
       </View>
       <Grid columns={columns}>
         {alerts.map((a) => {
           const vm = alertVM(a);
-          const sure = sureness(a.fairValue.confidence);
-          const edge = edgeOf(a);
-          const sig = signal(edge, a.fairValue.confidence);
+          const price = Number(vm.predictedClose.replace(/[^0-9.]/g, ""));
+          const fv = a.fairValue.point;
+          const under = fv > 0 && price > 0 ? Math.round((1 - price / fv) * 100) : 0;
           return (
-            <Pressable key={a.itemId} style={styles.deal} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title })}>
-              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={52} />
-              <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                <Text style={styles.dealName} numberOfLines={1}>
+            <Pressable key={a.itemId} style={styles.itemCard} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title })}>
+              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={66} />
+              <View style={styles.cardBody}>
+                <Text style={styles.cardTitle} numberOfLines={2}>
                   {vm.title}
                 </Text>
-                <Text style={styles.dealMeta} numberOfLines={1}>
-                  fv {money(a.fairValue.point)} · {a.buyingOption === "AUCTION" ? "bid" : "ask"} {vm.predictedClose.replace("$", "")} ·{" "}
-                  <Text style={{ color: tone(sure.tone) }}>{sure.dots}</Text>
+                <Text style={styles.cardSub} numberOfLines={1}>
+                  {a.key.grader} {a.key.grade}
+                  {a.key.variant ? ` · ${a.key.variant}` : ""} · {a.buyingOption === "AUCTION" ? "Auction" : "Buy It Now"}
                 </Text>
-              </View>
-              <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
-                <Text style={[styles.dealEdge, { color: sig.color }]}>
-                  {edge >= 0 ? "+" : ""}
-                  {Math.round(edge * 100)}%
-                </Text>
-                <View style={[styles.sigTag, { borderColor: sig.color + "55" }]}>
-                  <Text style={[styles.sigTagText, { color: sig.color }]}>{sig.tag}</Text>
+                <View style={styles.cardPriceRow}>
+                  <Text style={styles.cardPrice}>${Math.round(price).toLocaleString()}</Text>
+                  {under > 0 ? (
+                    <View style={styles.underPill}>
+                      <Text style={styles.underPillText}>{under}% under value</Text>
+                    </View>
+                  ) : null}
                 </View>
+                {pro ? (
+                  <Text style={styles.cardProMeta} numberOfLines={1}>
+                    value {money(fv)} · {sureness(a.fairValue.confidence).label.toLowerCase()} confidence · {a.fairValue.compCount} comps
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           );
         })}
       </Grid>
-      {pro ? <Text style={styles.feedFoot}>edge = fair value vs. current price · dots = comp confidence · buy ≥15% · watch ≥6%</Text> : null}
     </View>
   );
 }
@@ -1343,24 +1373,29 @@ function HoldingCard({ v, onOpenCard }: { v: ValuedHolding; onOpenCard: (c: Deta
   // Whole row taps open the detail sheet (photo, comps, edit, remove). Single
   // Pressable — no nested flex Pressable (that collapses to zero-height on iOS).
   return (
-    <Pressable style={[styles.holdingRow, { marginBottom: 7 }]} onPress={() => onOpenCard({ id: h.id, key: k, imageUrl: h.imageUrl, name, isOwned: true, holding: h })}>
-      <CardImage uri={h.imageUrl} label={`${k.grader} ${k.grade}`} size={52} />
-      <View style={{ flex: 1, marginLeft: 10 }}>
-        <Text style={styles.holdingName} numberOfLines={1}>
+    <Pressable style={styles.itemCard} onPress={() => onOpenCard({ id: h.id, key: k, imageUrl: h.imageUrl, name, isOwned: true, holding: h })}>
+      <CardImage uri={h.imageUrl} label={`${k.grader} ${k.grade}`} size={66} />
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
           {name}
         </Text>
-        <Text style={styles.holdingSub} numberOfLines={1}>
+        <Text style={styles.cardSub} numberOfLines={1}>
           {k.grader} {k.grade}
           {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
           {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
         </Text>
-        {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
+        <View style={styles.cardPriceRow}>
+          <Text style={styles.cardPrice}>{val}</Text>
+          {pl ? (
+            <Text style={[styles.cardPL, { color: plUp ? C.green : C.red }]}>
+              {pl} {trend ? `· ${trend}` : ""}
+            </Text>
+          ) : trend ? (
+            <Text style={[styles.cardPL, { color: up ? C.green : C.red }]}>{trend}</Text>
+          ) : null}
+        </View>
       </View>
-      <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
-        <Text style={styles.holdingVal}>{val}</Text>
-        {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
-        <Ionicons name="chevron-forward" size={13} color={C.muted} style={{ marginTop: 3 }} />
-      </View>
+      <Ionicons name="chevron-forward" size={16} color={C.muted} style={{ alignSelf: "center" }} />
     </Pressable>
   );
 }
@@ -1506,6 +1541,19 @@ const styles = StyleSheet.create({
   feedHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   feedMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginBottom: 10 },
   feedFoot: { color: C.muted, fontSize: 11, fontFamily: MONO, lineHeight: 16, marginTop: 6 },
+  // Clean, eBay-style card: photo · title/condition/price · chevron.
+  itemCard: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 11, marginBottom: 9 },
+  cardBody: { flex: 1, minWidth: 0, justifyContent: "center" },
+  cardTitle: { color: C.ink, fontSize: 15, fontWeight: "600", lineHeight: 20 },
+  cardSub: { color: C.muted, fontSize: 12, marginTop: 3 },
+  cardPriceRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 7 },
+  cardPrice: { color: C.ink, fontSize: 18, fontWeight: "700", fontFamily: MONO },
+  cardPL: { fontSize: 12, fontFamily: MONO },
+  underPill: { backgroundColor: "#102a18", borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 },
+  underPillText: { color: C.green, fontSize: 12, fontWeight: "600" },
+  cardProMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginTop: 5 },
+  emptyBox: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 14 },
+  emptyText: { color: C.muted, fontSize: 14, textAlign: "center", paddingHorizontal: 30, lineHeight: 20 },
   deal: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 10, marginBottom: 7 },
   dealName: { color: C.ink, fontSize: 13 },
   dealMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginTop: 3 },
