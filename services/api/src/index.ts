@@ -91,6 +91,24 @@ app.get<{ Querystring: { q?: string; grader?: string; grade?: string } }>("/debu
   }
 });
 
+// TEMP: run the ACTUAL provider chain (Accumulating → TheCardApi → fetch) that valuation uses.
+app.get<{ Querystring: { set?: string; number?: string; variant?: string; grader?: string; grade?: string } }>("/debug/provider", async (req) => {
+  const key = {
+    set: req.query.set ?? "2018 Panini Prizm Basketball",
+    number: req.query.number ?? "280",
+    variant: req.query.variant,
+    grader: (req.query.grader ?? "PSA") as Grader,
+    grade: Number(req.query.grade ?? 10),
+  };
+  const window = { fromIso: new Date(Date.now() - 180 * 86_400_000).toISOString(), toIso: new Date().toISOString() };
+  try {
+    const comps = await providers.market.getSoldComps(key, window);
+    return { marketType: capabilities.market, compCount: comps.length, sample: comps.slice(0, 4).map((c) => ({ price: c.soldPrice, at: c.soldAt, type: c.saleType, seller: c.seller?.id })) };
+  } catch (e) {
+    return { error: String((e as Error).message) };
+  }
+});
+
 // ── eBay Marketplace Account Deletion/Closure notifications ──
 // Required to activate eBay production keys. eBay first sends GET ?challenge_code
 // and expects { challengeResponse: sha256(challengeCode + token + endpoint) };
