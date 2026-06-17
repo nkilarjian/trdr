@@ -37,7 +37,6 @@ function AuthButtonInner() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const { startSSOFlow } = useSSO();
   const [open, setOpen] = useState(false);
 
   if (isSignedIn) {
@@ -50,25 +49,13 @@ function AuthButtonInner() {
       </Pressable>
     );
   }
-  // One-tap Google is the primary path — no email codes, and the most reliable
-  // "stays signed in" experience. If Google can't start (popup blocked, user
-  // cancels), fall back to the hosted Account Portal, then the in-app email
-  // modal. Sign-in is optional; the app works fully as a guest.
-  const startSignIn = async () => {
-    if (Platform.OS === "web") {
-      try {
-        const { createdSessionId, setActive } = await startSSOFlow({ strategy: "oauth_google" });
-        if (createdSessionId && setActive) await setActive({ session: createdSessionId });
-        return;
-      } catch {
-        const url = hostedSignInUrl();
-        if (url) {
-          window.location.assign(url);
-          return;
-        }
-      }
-    }
-    setOpen(true);
+  // On web, send the user to Clerk's hosted Account Portal (proven, handles the
+  // session round-trip correctly). The portal offers "Continue with Google" — one
+  // tap, no email codes. Native uses the in-app modal. Sign-in is optional.
+  const startSignIn = () => {
+    const url = Platform.OS === "web" ? hostedSignInUrl() : null;
+    if (url) window.location.assign(url);
+    else setOpen(true);
   };
   return (
     <>
