@@ -25,7 +25,8 @@ import {
   watchlistPath,
   type WatchedKey,
 } from "@trdr/ingestion";
-import type { Grader, Holding, WishSpec } from "@trdr/core";
+import { computeFairValue } from "@trdr/core";
+import type { CanonicalCardKey, Grader, Holding, WishSpec } from "@trdr/core";
 
 // Load repo-root .env so credentials are picked up without exporting by hand
 // (Node 20.12+/22+ built-in). Must run before selectProviders reads process.env.
@@ -136,6 +137,23 @@ app.post<{ Body: { holdings?: Holding[] } }>("/api/v1/library/value", async (req
   const holdings = (req.body?.holdings ?? []).filter((h) => h?.id && h?.key);
   if (!holdings.length) return { holdings: [] };
   return { holdings: await valueLibrary(providers, holdings) };
+});
+
+// Card detail for the tap-to-open sheet: fair value + the recent sold comps it's
+// built from (for the comps list and the sparkline).
+app.post<{ Body: { key?: CanonicalCardKey } }>("/api/v1/card/detail", async (req) => {
+  const key = req.body?.key;
+  if (!key?.set) return { comps: [] };
+  const DAY = 86_400_000;
+  const now = Date.now();
+  const raw = await providers.market.getSoldComps(key, { fromIso: new Date(now - 180 * DAY).toISOString(), toIso: new Date(now).toISOString() });
+  const fairValue = raw.length ? computeFairValue({ comps: raw, now }) : undefined;
+  const comps = raw
+    .slice()
+    .sort((a, b) => Date.parse(b.soldAt) - Date.parse(a.soldAt))
+    .slice(0, 24)
+    .map((c) => ({ price: c.soldPrice, soldAt: c.soldAt, title: c.rawTitle }));
+  return { fairValue, comps };
 });
 
 // Snap your collection: read many slabs from one photo, auto-add the confident

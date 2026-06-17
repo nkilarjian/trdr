@@ -1,5 +1,5 @@
 import { Children, createContext, useContext, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { Image, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -301,6 +301,9 @@ export default function App() {
       return next;
     });
 
+  // Tap-to-open card detail sheet (deals + library cards).
+  const [detail, setDetail] = useState<DetailCard | null>(null);
+
   // Cloud (Clerk) → MERGE the account's saved wishlist/library with what's on the
   // device (union by id). Never replace: a freshly-added card must survive the
   // cloud load even if the cloud copy is empty or arrives late after sign-in.
@@ -359,7 +362,7 @@ export default function App() {
 
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
-      {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} />}
+      {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} onOpenCard={setDetail} />}
       {tab === "library" && (
         <LibraryScreen
           holdings={holdings}
@@ -367,8 +370,7 @@ export default function App() {
           scan={FALLBACK.scan}
           onAddScanned={addScanned}
           onAddHolding={addHolding}
-          onRemove={removeHolding}
-          onUpdate={updateHolding}
+          onOpenCard={setDetail}
           columns={columns}
           pro={pro}
         />
@@ -417,6 +419,7 @@ export default function App() {
             <CloudSync specs={specs} holdings={holdings} onLoad={onCloudLoad} />
             {header}
             {inner}
+            <CardDetailModal card={detail} onClose={() => setDetail(null)} onUpdate={updateHolding} onRemove={removeHolding} />
           </SafeAreaView>
         </ScaleCtx.Provider>
       </SafeAreaProvider>
@@ -647,7 +650,7 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
   );
 }
 
-function AlertsFeed({ alerts, columns, pro }: { alerts: Alert[]; columns: number; pro: boolean }) {
+function AlertsFeed({ alerts, columns, pro, onOpenCard }: { alerts: Alert[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void }) {
   // edge % = how far the current price sits below fair value.
   const edgeOf = (a: Alert) => {
     const price = Number(alertVM(a).predictedClose.replace(/[^0-9.]/g, ""));
@@ -669,8 +672,8 @@ function AlertsFeed({ alerts, columns, pro }: { alerts: Alert[]; columns: number
           const edge = edgeOf(a);
           const sig = signal(edge, a.fairValue.confidence);
           return (
-            <Pressable key={a.itemId} style={styles.deal} onPress={() => Linking.openURL(vm.deepLink)}>
-              <CardImage uri={a.imageUrl} label={`${a.key.grade}`} size={44} />
+            <Pressable key={a.itemId} style={styles.deal} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title })}>
+              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={52} />
               <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
                 <Text style={styles.dealName} numberOfLines={1}>
                   {vm.title}
@@ -978,6 +981,176 @@ function HitCard({ hit }: { hit: WishHit }) {
   );
 }
 
+type DetailCard = { id?: string; key: CardKey; imageUrl?: string; name: string; isOwned?: boolean; holding?: Holding };
+
+// Tap-to-open card detail: photo, value band, price sparkline, recent sold comps,
+// eBay link, and (for owned cards) purchase details + remove.
+function CardDetailModal({
+  card,
+  onClose,
+  onUpdate,
+  onRemove,
+}: {
+  card: DetailCard | null;
+  onClose: () => void;
+  onUpdate?: (id: string, patch: Partial<Holding>) => void;
+  onRemove?: (id: string) => void;
+}) {
+  const [data, setData] = useState<{ fairValue?: { point: number; lower: number; upper: number; confidence: number; compCount: number }; comps?: { price: number; soldAt: string; title?: string }[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [paid, setPaid] = useState("");
+  const [date, setDate] = useState("");
+  const [where, setWhere] = useState("");
+
+  useEffect(() => {
+    if (!card) return;
+    setData(null);
+    setPaid(card.holding?.acquiredPrice != null ? String(card.holding.acquiredPrice) : "");
+    setDate(card.holding?.acquiredAt ?? "");
+    setWhere(card.holding?.acquiredFrom ?? "");
+    if (!API_BASE) return;
+    let active = true;
+    setLoading(true);
+    fetch(`${API_BASE}/api/v1/card/detail`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: card.key }) })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
+      .then((d) => active && setData(d))
+      .catch(() => active && setData({ comps: [] }))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [card]);
+
+  if (!card) return null;
+  const k = card.key;
+  const fv = data?.fairValue;
+  const comps = data?.comps ?? [];
+  const ebay = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent([k.set, k.number ? `#${k.number}` : "", k.variant, k.grader, k.grade].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1`;
+  const series = comps.map((c) => c.price).filter((p) => p > 0).reverse();
+  const max = Math.max(1, ...series);
+  const min = series.length ? Math.min(...series) : 0;
+  const saveEdit = () => {
+    if (!card.id || !onUpdate) return;
+    const n = paid.trim() ? Number(paid.replace(/[^0-9.]/g, "")) : undefined;
+    onUpdate(card.id, { acquiredPrice: n != null && Number.isFinite(n) ? n : undefined, acquiredAt: date.trim() || undefined, acquiredFrom: where.trim() || undefined });
+    onClose();
+  };
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={cd.backdrop} onPress={onClose} />
+      <View style={cd.sheet}>
+        <View style={cd.handle} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={{ flexDirection: "row", gap: 14, marginBottom: 4 }}>
+            <CardImage uri={card.imageUrl} label={`${k.grader} ${k.grade}`} size={96} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={cd.name}>{card.name}</Text>
+              <View style={cd.gradeChip}>
+                <Text style={cd.gradeChipText}>
+                  {k.grader} {k.grade}
+                  {k.variant ? ` · ${k.variant}` : ""}
+                </Text>
+              </View>
+              <Text style={cd.value}>{fv ? `$${Math.round(fv.point).toLocaleString()}` : loading ? "…" : "—"}</Text>
+              {fv ? (
+                <Text style={cd.band}>
+                  ${Math.round(fv.lower).toLocaleString()} – ${Math.round(fv.upper).toLocaleString()} · {sureness(fv.confidence).dots} · {fv.compCount} comps
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {series.length > 1 ? (
+            <View style={cd.spark}>
+              {series.map((p, i) => (
+                <View key={i} style={[cd.sparkBar, { height: 5 + ((p - min) / (max - min || 1)) * 30 }]} />
+              ))}
+            </View>
+          ) : null}
+
+          <Text style={cd.section}>Recent sold</Text>
+          {comps.length === 0 ? (
+            <Text style={cd.empty}>{loading ? "Loading sold comps…" : "No recent sold comps for this card."}</Text>
+          ) : (
+            comps.slice(0, 12).map((c, i) => (
+              <View key={i} style={cd.compRow}>
+                <Text style={cd.compDate}>{c.soldAt.slice(0, 10)}</Text>
+                <Text style={cd.compTitle} numberOfLines={1}>{c.title || ""}</Text>
+                <Text style={cd.compPrice}>${Math.round(c.price).toLocaleString()}</Text>
+              </View>
+            ))
+          )}
+
+          {card.isOwned && onUpdate ? (
+            <View style={cd.editBox}>
+              <Text style={cd.section}>Your purchase</Text>
+              <View style={cd.editRow}>
+                <Text style={cd.editLabel}>Price paid</Text>
+                <TextInput value={paid} onChangeText={setPaid} keyboardType="numeric" placeholder="$ — optional" placeholderTextColor={C.muted} style={cd.editInput} />
+              </View>
+              <View style={cd.editRow}>
+                <Text style={cd.editLabel}>Date</Text>
+                <TextInput value={date} onChangeText={setDate} placeholder="optional" placeholderTextColor={C.muted} style={cd.editInput} />
+              </View>
+              <View style={cd.editRow}>
+                <Text style={cd.editLabel}>Where</Text>
+                <TextInput value={where} onChangeText={setWhere} autoCapitalize="words" placeholder="optional" placeholderTextColor={C.muted} style={cd.editInput} />
+              </View>
+              <Pressable style={cd.saveBtn} onPress={saveEdit}>
+                <Text style={cd.saveText}>Save details</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", gap: 9, marginTop: 16 }}>
+            <Pressable style={cd.cta} onPress={() => Linking.openURL(ebay)}>
+              <Text style={cd.ctaText}>See sold on eBay →</Text>
+            </Pressable>
+            {card.isOwned && card.id && onRemove ? (
+              <Pressable style={cd.removeBtn} onPress={() => { onRemove(card.id as string); onClose(); }} accessibilityLabel="Remove card">
+                <Ionicons name="trash-outline" size={18} color={C.red} />
+              </Pressable>
+            ) : null}
+          </View>
+          <Pressable onPress={onClose}>
+            <Text style={cd.close}>Close</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const cd = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)" },
+  sheet: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "88%", backgroundColor: "#0d1420", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: "#25303f", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#28323f", alignSelf: "center", marginBottom: 14 },
+  name: { color: C.ink, fontSize: 16, fontWeight: "700", lineHeight: 21 },
+  gradeChip: { alignSelf: "flex-start", marginTop: 7, borderWidth: 1, borderColor: "#1f3a5f", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
+  gradeChipText: { color: C.accent, fontFamily: MONO, fontSize: 11 },
+  value: { color: C.ink, fontFamily: MONO, fontSize: 26, marginTop: 10 },
+  band: { color: C.muted, fontFamily: MONO, fontSize: 11, marginTop: 2 },
+  spark: { flexDirection: "row", alignItems: "flex-end", gap: 3, height: 40, marginTop: 14, marginBottom: 6 },
+  sparkBar: { flex: 1, backgroundColor: C.green, borderRadius: 1, minHeight: 4, opacity: 0.85 },
+  section: { color: C.muted, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", marginTop: 16, marginBottom: 8 },
+  empty: { color: C.muted, fontSize: 12, fontFamily: MONO },
+  compRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 5, borderTopWidth: 1, borderTopColor: C.line },
+  compDate: { color: C.muted, fontFamily: MONO, fontSize: 11, width: 64 },
+  compTitle: { color: C.muted, fontSize: 11, flex: 1 },
+  compPrice: { color: C.ink, fontFamily: MONO, fontSize: 13 },
+  editBox: { marginTop: 4 },
+  editRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
+  editLabel: { color: C.muted, fontSize: 12, width: 70 },
+  editInput: { flex: 1, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, color: C.ink, fontSize: 13, fontFamily: MONO },
+  saveBtn: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, alignItems: "center", marginTop: 2 },
+  saveText: { color: C.ink, fontWeight: "600", fontSize: 13 },
+  cta: { flex: 1, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
+  ctaText: { color: "#04122b", fontWeight: "700", fontSize: 14 },
+  removeBtn: { width: 48, borderWidth: 1, borderColor: "#3a1f24", borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  close: { color: C.muted, fontSize: 14, textAlign: "center", marginTop: 16 },
+});
+
 function CardImage({ uri, label, size = 52 }: { uri?: string; label?: string; size?: number }) {
   const [err, setErr] = useState(false);
   if (uri && !err) {
@@ -1045,8 +1218,7 @@ function LibraryScreen({
   scan: bundledScan,
   onAddScanned,
   onAddHolding,
-  onRemove,
-  onUpdate,
+  onOpenCard,
   columns,
   pro,
 }: {
@@ -1055,8 +1227,7 @@ function LibraryScreen({
   scan: Scan;
   onAddScanned: (v: ValuedHolding[]) => void;
   onAddHolding: (text: string) => void;
-  onRemove: (id: string) => void;
-  onUpdate: (id: string, patch: Partial<Holding>) => void;
+  onOpenCard: (c: DetailCard) => void;
   columns: number;
   pro: boolean;
 }) {
@@ -1152,7 +1323,7 @@ function LibraryScreen({
       ) : (
         <Grid columns={columns}>
           {holdings.map((v) => (
-            <HoldingCard key={v.holding.id} v={v} onRemove={onRemove} onUpdate={onUpdate} />
+            <HoldingCard key={v.holding.id} v={v} onOpenCard={onOpenCard} />
           ))}
         </Grid>
       )}
@@ -1160,79 +1331,37 @@ function LibraryScreen({
   );
 }
 
-function HoldingCard({ v, onRemove, onUpdate }: { v: ValuedHolding; onRemove?: (id: string) => void; onUpdate?: (id: string, patch: Partial<Holding>) => void }) {
+function HoldingCard({ v, onOpenCard }: { v: ValuedHolding; onOpenCard: (c: DetailCard) => void }) {
   const k = v.holding.key;
   const h = v.holding;
-  const [edit, setEdit] = useState(false);
-  const [paid, setPaid] = useState(h.acquiredPrice != null ? String(h.acquiredPrice) : "");
-  const [date, setDate] = useState(h.acquiredAt ?? "");
-  const [where, setWhere] = useState(h.acquiredFrom ?? "");
   const val = v.fairValue ? `$${Math.round(v.fairValue.point).toLocaleString()}` : "—";
   const up = (v.trendPct ?? 0) >= 0;
   const trend = v.trendPct != null ? `${up ? "▲" : "▼"} ${Math.abs(v.trendPct * 100).toFixed(1)}%/mo` : "";
   const plUp = (v.unrealizedPL ?? 0) >= 0;
   const pl = v.unrealizedPL != null ? `${plUp ? "+" : "−"}$${Math.abs(Math.round(v.unrealizedPL)).toLocaleString()}` : "";
-  const save = () => {
-    const n = paid.trim() ? Number(paid.replace(/[^0-9.]/g, "")) : undefined;
-    onUpdate?.(h.id, {
-      acquiredPrice: n != null && Number.isFinite(n) ? n : undefined,
-      acquiredAt: date.trim() || undefined,
-      acquiredFrom: where.trim() || undefined,
-    });
-    setEdit(false);
-  };
+  const name = `${k.set}${k.number ? ` #${k.number}` : ""}${k.variant ? ` ${k.variant}` : ""}`;
+  // Whole row taps open the detail sheet (photo, comps, edit, remove). Single
+  // Pressable — no nested flex Pressable (that collapses to zero-height on iOS).
   return (
-    <View style={{ marginBottom: 7 }}>
-      <View style={[styles.holdingRow, { marginBottom: 0, borderBottomLeftRadius: edit ? 0 : 8, borderBottomRightRadius: edit ? 0 : 8 }]}>
-        <CardImage uri={h.imageUrl} label={`${k.grade}`} size={44} />
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.holdingName} numberOfLines={1}>
-            {k.set}
-            {k.number ? ` #${k.number}` : ""}
-            {k.variant ? ` ${k.variant}` : ""}
-          </Text>
-          <Text style={styles.holdingSub} numberOfLines={1}>
-            {k.grader} {k.grade}
-            {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
-            {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
-          </Text>
-          {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
-        </View>
-        <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
-          <Text style={styles.holdingVal}>{val}</Text>
-          {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
-        </View>
-        {onUpdate ? (
-          <Pressable onPress={() => setEdit((e) => !e)} hitSlop={8} style={styles.holdingEdit} accessibilityLabel="Edit purchase details">
-            <Ionicons name="create-outline" size={16} color={edit ? C.accent : C.muted} />
-          </Pressable>
-        ) : null}
-        {onRemove ? (
-          <Pressable onPress={() => onRemove(h.id)} hitSlop={10} style={styles.holdingRemove} accessibilityLabel="Remove card">
-            <Text style={styles.holdingRemoveText}>✕</Text>
-          </Pressable>
-        ) : null}
+    <Pressable style={[styles.holdingRow, { marginBottom: 7 }]} onPress={() => onOpenCard({ id: h.id, key: k, imageUrl: h.imageUrl, name, isOwned: true, holding: h })}>
+      <CardImage uri={h.imageUrl} label={`${k.grader} ${k.grade}`} size={52} />
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={styles.holdingName} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.holdingSub} numberOfLines={1}>
+          {k.grader} {k.grade}
+          {h.acquiredPrice != null ? ` · paid $${money(h.acquiredPrice)}` : ""}
+          {h.acquiredFrom ? ` · ${h.acquiredFrom}` : ""}
+        </Text>
+        {trend ? <Text style={[styles.holdingTrend, { color: up ? C.green : C.red }]}>{trend}</Text> : null}
       </View>
-      {edit ? (
-        <View style={styles.editPanel}>
-          <View style={styles.editRow}>
-            <Text style={styles.editLabel}>Price paid</Text>
-            <TextInput value={paid} onChangeText={setPaid} keyboardType="numeric" placeholder="$ — optional" placeholderTextColor={C.muted} style={styles.editInput} />
-          </View>
-          <View style={styles.editRow}>
-            <Text style={styles.editLabel}>Date</Text>
-            <TextInput value={date} onChangeText={setDate} placeholder="optional · e.g. 2026-06" placeholderTextColor={C.muted} style={styles.editInput} />
-          </View>
-          <View style={styles.editRow}>
-            <Text style={styles.editLabel}>Where</Text>
-            <TextInput value={where} onChangeText={setWhere} autoCapitalize="words" placeholder="optional · e.g. eBay, card show" placeholderTextColor={C.muted} style={styles.editInput} />
-          </View>
-          <Pressable style={styles.editSave} onPress={save}>
-            <Text style={styles.editSaveText}>Save details</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </View>
+      <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+        <Text style={styles.holdingVal}>{val}</Text>
+        {pl ? <Text style={[styles.holdingPL, { color: plUp ? C.green : C.red }]}>{pl}</Text> : null}
+        <Ionicons name="chevron-forward" size={13} color={C.muted} style={{ marginTop: 3 }} />
+      </View>
+    </Pressable>
   );
 }
 
