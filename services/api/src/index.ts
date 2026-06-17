@@ -62,6 +62,24 @@ const capabilities = {
 };
 app.get("/health", async () => ({ ok: true, providers: capabilities }));
 
+// TEMP debug: see what The Card API actually returns (uses server key, doesn't expose it).
+app.get<{ Querystring: { q?: string; grader?: string; grade?: string } }>("/debug/tca", async (req) => {
+  const key = process.env.THECARDAPI_KEY;
+  if (!key) return { error: "THECARDAPI_KEY not set" };
+  const params = new URLSearchParams();
+  params.set("q", req.query.q ?? "2018 Panini Prizm Luka Doncic 280");
+  if (req.query.grader) params.set("grader", req.query.grader);
+  if (req.query.grade) params.set("grade", req.query.grade);
+  params.set("limit", "5");
+  try {
+    const res = await fetch(`https://thecardapi.com/api/v1/market/sales?${params}`, { headers: { "x-market-api-key": key } });
+    const text = await res.text();
+    return { url: `/sales?${params}`, status: res.status, ok: res.ok, body: text.slice(0, 600) };
+  } catch (e) {
+    return { error: String((e as Error).message) };
+  }
+});
+
 // ── eBay Marketplace Account Deletion/Closure notifications ──
 // Required to activate eBay production keys. eBay first sends GET ?challenge_code
 // and expects { challengeResponse: sha256(challengeCode + token + endpoint) };
