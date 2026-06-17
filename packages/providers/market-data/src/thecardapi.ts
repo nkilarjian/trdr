@@ -42,8 +42,9 @@ export class TheCardApiMarketProvider implements MarketDataProvider {
     params.set("q", q);
     if (key.grader) params.set("grader", key.grader);
     if (key.grade != null) params.set("grade", String(key.grade));
-    params.set("date_from", window.fromIso.slice(0, 10));
-    params.set("date_to", window.toIso.slice(0, 10));
+    // No date filter: the API's plan lookback (e.g. 7 days on free) already
+    // bounds recency, and a wide date_from returns nothing on limited plans.
+    void window;
     params.set("limit", "100");
     try {
       const res = await fetch(`${BASE}/sales?${params}`, { headers: { "x-market-api-key": this.apiKey } });
