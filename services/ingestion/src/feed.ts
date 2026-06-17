@@ -103,12 +103,19 @@ export function alertsFrom(v: CardValuation, opts: { epnCampaignId?: string; now
 }
 
 /** Cheap guard against eBay search false positives: the listing title must
- *  mention the key's parallel/variant words (when it has one). */
+ *  mention the key's card number and parallel/variant (when present). */
 function listingMatchesKey(listing: ActiveListing, key: CanonicalCardKey): boolean {
-  if (!key.variant) return true;
   const title = (listing.title ?? "").toLowerCase();
-  const words = key.variant.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
-  return words.every((w) => title.includes(w));
+  // Card number (e.g. "280") should appear — distinguishes it from other cards
+  // of the same player/set. Compare alphanumerics so "#280"/"No. 280" all match.
+  const num = (key.number ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (num && !title.replace(/[^a-z0-9]/g, "").includes(num)) return false;
+  // Parallel/variant words (e.g. "Silver") — a base card must not match a parallel.
+  if (key.variant) {
+    const words = key.variant.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+    if (!words.every((w) => title.includes(w))) return false;
+  }
+  return true;
 }
 
 export function passportFrom(v: CardValuation, cert: string | null): PassportView {

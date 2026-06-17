@@ -42,6 +42,7 @@ type WishHit = {
 type Wishlist = { specs: WishSpec[]; tree: WishNode; hits: WishHit[] };
 
 type Holding = { id: string; key: CardKey; cert?: string; imageUrl?: string; acquiredPrice?: number; acquiredAt?: string; acquiredFrom?: string };
+type WatchedCard = { key: CardKey; fairValue?: { point: number; lower: number; upper: number; confidence: number; compCount: number }; imageUrl?: string; lowestAsk?: number };
 type ValuedHolding = {
   holding: Holding;
   fairValue?: { point: number; lower: number; upper: number; confidence: number };
@@ -144,6 +145,7 @@ export default function App() {
   // With a real backend, start EMPTY and show a loading state — never flash the
   // seeded demo deals as if they were live (that's what made it look "broken").
   const [alerts, setAlerts] = useState<Alert[]>(API_BASE ? [] : FALLBACK.alerts);
+  const [watching, setWatching] = useState<WatchedCard[]>([]);
   const [passport, setPassport] = useState<Passport>(FALLBACK.passport);
   const [hits, setHits] = useState<WishHit[]>(API_BASE ? [] : FALLBACK.wishlist.hits);
   const [boardLoaded, setBoardLoaded] = useState(!API_BASE); // no API → the snapshot IS the data
@@ -172,15 +174,16 @@ export default function App() {
       body: JSON.stringify({ specs: currentSpecs }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((b: { alerts: Alert[]; wishlist: { hits: WishHit[] }; passport: Passport | null }) => {
+      .then((b: { alerts: Alert[]; watching?: WatchedCard[]; wishlist: { hits: WishHit[] }; passport: Passport | null }) => {
         setAlerts(b.alerts);
+        setWatching(b.watching ?? []);
         setHits(b.wishlist.hits);
         if (b.passport) setPassport(b.passport);
         setSource("live");
         setBoardLoaded(true);
         // Cache last-good board so reopening shows real deals instantly (the live
         // scan takes several seconds; nobody should stare at a blank/old screen).
-        AsyncStorage.setItem("trdr.board", JSON.stringify({ alerts: b.alerts, hits: b.wishlist.hits })).catch(() => {});
+        AsyncStorage.setItem("trdr.board", JSON.stringify({ alerts: b.alerts, watching: b.watching ?? [], hits: b.wishlist.hits })).catch(() => {});
       })
       .catch(() => {
         // Unreachable/slow API: mark loaded so we stop showing a spinner forever.
@@ -235,9 +238,14 @@ export default function App() {
       AsyncStorage.getItem("trdr.board")
         .then((v) => {
           if (!active || !v) return;
-          const b = JSON.parse(v) as { alerts?: Alert[]; hits?: WishHit[] };
+          const b = JSON.parse(v) as { alerts?: Alert[]; watching?: WatchedCard[]; hits?: WishHit[] };
           if (b.alerts?.length) {
             setAlerts(b.alerts);
+            setSource("live");
+            setBoardLoaded(true);
+          }
+          if (b.watching?.length) {
+            setWatching(b.watching);
             setSource("live");
             setBoardLoaded(true);
           }
@@ -385,7 +393,7 @@ export default function App() {
 
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
-      {tab === "alerts" && <AlertsFeed alerts={alerts} columns={columns} pro={pro} onOpenCard={setDetail} loading={!boardLoaded} />}
+      {tab === "alerts" && <AlertsFeed alerts={alerts} watching={watching} columns={columns} pro={pro} onOpenCard={setDetail} loading={!boardLoaded} />}
       {tab === "library" && (
         <LibraryScreen
           holdings={holdings}
@@ -673,27 +681,25 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
   );
 }
 
-function AlertsFeed({ alerts, columns, pro, onOpenCard, loading }: { alerts: Alert[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void; loading: boolean }) {
-  // Empty: a clean loading / no-results state — NEVER fake cards.
-  if (!alerts.length) {
-    return (
-      <View>
-        <Text style={styles.colH}>Deals</Text>
-        <View style={styles.emptyBox}>
-          {loading ? <ActivityIndicator color={C.accent} /> : null}
-          <Text style={styles.emptyText}>{loading ? "Finding cards priced under market value…" : "No deals right now. Pull down to refresh."}</Text>
-        </View>
-      </View>
-    );
-  }
+function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { alerts: Alert[]; watching: WatchedCard[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void; loading: boolean }) {
   return (
     <View>
       <View style={styles.feedHead}>
         <Text style={styles.colH}>Deals</Text>
-        <Text style={styles.feedMeta}>{alerts.length} under market value</Text>
+        {alerts.length > 0 ? <Text style={styles.feedMeta}>{alerts.length} under market value</Text> : null}
       </View>
-      <Grid columns={columns}>
-        {alerts.map((a) => {
+      {/* No deals → a clean state, NEVER fake cards. The watched-cards list below
+          keeps the screen useful even when nothing is underpriced right now. */}
+      {alerts.length === 0 ? (
+        <View style={styles.emptyBox}>
+          {loading ? <ActivityIndicator color={C.accent} /> : null}
+          <Text style={styles.emptyText}>
+            {loading ? "Finding cards priced under market value…" : watching.length ? "No deals right now — here's what you're watching." : "No deals yet. Add cards to your wishlist to start tracking them."}
+          </Text>
+        </View>
+      ) : (
+        <Grid columns={columns}>
+          {alerts.map((a) => {
           const vm = alertVM(a);
           const price = Number(vm.predictedClose.replace(/[^0-9.]/g, ""));
           const fv = a.fairValue.point;
@@ -726,8 +732,45 @@ function AlertsFeed({ alerts, columns, pro, onOpenCard, loading }: { alerts: Ale
             </Pressable>
           );
         })}
-      </Grid>
+        </Grid>
+      )}
+
+      {watching.length > 0 ? (
+        <>
+          <Text style={[styles.colH, { marginTop: 22 }]}>Watching · {watching.length}</Text>
+          <Grid columns={columns}>
+            {watching.map((w, i) => (
+              <WatchCard key={`${w.key.set}-${w.key.number}-${i}`} w={w} onOpenCard={onOpenCard} />
+            ))}
+          </Grid>
+        </>
+      ) : null}
     </View>
+  );
+}
+
+function WatchCard({ w, onOpenCard }: { w: WatchedCard; onOpenCard: (c: DetailCard) => void }) {
+  const k = w.key;
+  const name = `${k.set}${k.number ? ` #${k.number}` : ""}${k.variant ? ` ${k.variant}` : ""}`;
+  const val = w.fairValue ? `$${Math.round(w.fairValue.point).toLocaleString()}` : "—";
+  return (
+    <Pressable style={styles.itemCard} onPress={() => onOpenCard({ key: k, imageUrl: w.imageUrl, name })}>
+      <CardImage uri={w.imageUrl} label={`${k.grader} ${k.grade}`} size={66} />
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {name}
+        </Text>
+        <Text style={styles.cardSub} numberOfLines={1}>
+          {k.grader} {k.grade}
+          {w.lowestAsk ? ` · lowest ask $${Math.round(w.lowestAsk).toLocaleString()}` : ""}
+        </Text>
+        <View style={styles.cardPriceRow}>
+          <Text style={styles.cardPrice}>{val}</Text>
+          <Text style={styles.cardSub}>market value</Text>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={C.muted} style={{ alignSelf: "center" }} />
+    </Pressable>
   );
 }
 
