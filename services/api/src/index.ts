@@ -120,8 +120,10 @@ app.get("/api/v1/wishlist", async () => {
 // The posted wishlist is persisted as the watchlist so accumulation tracks the
 // same cards. Empty body falls back to the demo wishlist.
 app.post<{ Body: { specs?: WishSpec[] } }>("/api/v1/board", async (req) => {
-  const specs = req.body?.specs?.length ? req.body.specs : DEMO_WISHLIST;
-  if (req.body?.specs?.length) watchlist.save(specs);
+  // An explicit (even empty) specs array is the client's wishlist — honor it so a
+  // cleared wishlist stays cleared. Only a MISSING field falls back to the demo.
+  const specs = Array.isArray(req.body?.specs) ? req.body.specs : DEMO_WISHLIST;
+  if (specs.length) watchlist.save(specs);
   return scanBoard(providers, specs, { epnCampaignId: process.env.EBAY_EPN_CAMPAIGN_ID ?? "DEMO-EPN" });
 });
 

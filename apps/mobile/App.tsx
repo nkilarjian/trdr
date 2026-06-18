@@ -282,7 +282,7 @@ export default function App() {
     AsyncStorage.getItem("trdr.wishlist")
       .then((v) => {
         const saved = v ? (JSON.parse(v) as WishSpec[]) : null;
-        const s = saved && saved.length ? saved : FALLBACK.wishlist.specs;
+        const s = saved ?? FALLBACK.wishlist.specs; // honor a saved (even cleared/empty) wishlist
         if (active) setSpecs(s);
         refreshBoard(s);
       })
@@ -318,6 +318,17 @@ export default function App() {
     setSpecs(next);
     persistSpecs(next);
     refreshBoard(next);
+  };
+  const removeWish = (wishId: string) => {
+    const next = specs.filter((s) => s.id !== wishId);
+    setSpecs(next);
+    persistSpecs(next);
+    refreshBoard(next);
+  };
+  const clearWishlist = () => {
+    setSpecs([]);
+    persistSpecs([]);
+    refreshBoard([]);
   };
   const tree = buildWishTree(specs);
 
@@ -432,7 +443,7 @@ export default function App() {
           pro={pro}
         />
       )}
-      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} watching={watching} onAdd={addWish} onAddMany={addWishes} onOpenCard={setDetail} columns={columns} pro={pro} />}
+      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} watching={watching} onAdd={addWish} onAddMany={addWishes} onRemoveWish={removeWish} onClear={clearWishlist} onOpenCard={setDetail} columns={columns} pro={pro} />}
       {tab === "scan" && <ScanScreen canScan={visionReal} scan={FALLBACK.scan} onAddScanned={addScanned} onDone={() => setTab("library")} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
@@ -925,7 +936,7 @@ function BigStat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function WishlistScreen({ tree, hits, watching, onAdd, onAddMany, onOpenCard, columns, pro }: { tree: WishNode; hits: WishHit[]; watching: WatchedCard[]; onAdd: (t: string) => void; onAddMany: (t: string[]) => void; onOpenCard: (c: DetailCard) => void; columns: number; pro: boolean }) {
+function WishlistScreen({ tree, hits, watching, onAdd, onAddMany, onRemoveWish, onClear, onOpenCard, columns, pro }: { tree: WishNode; hits: WishHit[]; watching: WatchedCard[]; onAdd: (t: string) => void; onAddMany: (t: string[]) => void; onRemoveWish: (id: string) => void; onClear: () => void; onOpenCard: (c: DetailCard) => void; columns: number; pro: boolean }) {
   const [text, setText] = useState("");
   const [iv, setIv] = useState(false);
   const submit = () => {
@@ -937,7 +948,14 @@ function WishlistScreen({ tree, hits, watching, onAdd, onAddMany, onOpenCard, co
   };
   return (
     <View>
-      <Text style={styles.colH}>Your wishlist</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <Text style={[styles.colH, { marginBottom: 0 }]}>Your wishlist</Text>
+        {tree.children.length > 0 ? (
+          <Pressable onPress={onClear} hitSlop={8}>
+            <Text style={{ color: C.accent, fontSize: 12, fontWeight: "500" }}>Clear all</Text>
+          </Pressable>
+        ) : null}
+      </View>
       {iv ? (
         <WishlistInterview
           onClose={() => setIv(false)}
@@ -984,7 +1002,7 @@ function WishlistScreen({ tree, hits, watching, onAdd, onAddMany, onOpenCard, co
 
       <View style={[styles.treeBox, { marginTop: 18 }]}>
         {tree.children.map((c) => (
-          <TreeNodeView key={c.id} node={c} depth={0} hits={hits} />
+          <TreeNodeView key={c.id} node={c} depth={0} hits={hits} onRemoveWish={onRemoveWish} />
         ))}
       </View>
 
@@ -1060,7 +1078,7 @@ function WishlistInterview({ onBuild, onClose }: { onBuild: (wishes: string[]) =
   );
 }
 
-function TreeNodeView({ node, depth, hits }: { node: WishNode; depth: number; hits: WishHit[] }) {
+function TreeNodeView({ node, depth, hits, onRemoveWish }: { node: WishNode; depth: number; hits: WishHit[]; onRemoveWish: (id: string) => void }) {
   const isLeaf = !!node.wishId;
   const n = isLeaf ? hits.filter((h) => h.wishId === node.wishId).length : 0;
   return (
@@ -1075,9 +1093,14 @@ function TreeNodeView({ node, depth, hits }: { node: WishNode; depth: number; hi
             <Text style={styles.hitBadgeText}>{n}</Text>
           </View>
         ) : null}
+        {isLeaf && node.wishId ? (
+          <Pressable onPress={() => onRemoveWish(node.wishId as string)} hitSlop={10} style={{ marginLeft: 8 }} accessibilityLabel="Remove wish">
+            <Text style={{ color: C.muted, fontSize: 14 }}>✕</Text>
+          </Pressable>
+        ) : null}
       </View>
       {node.children.map((c) => (
-        <TreeNodeView key={c.id} node={c} depth={depth + 1} hits={hits} />
+        <TreeNodeView key={c.id} node={c} depth={depth + 1} hits={hits} onRemoveWish={onRemoveWish} />
       ))}
     </View>
   );
