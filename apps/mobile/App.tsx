@@ -432,7 +432,7 @@ export default function App() {
           pro={pro}
         />
       )}
-      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} onAdd={addWish} onAddMany={addWishes} columns={columns} pro={pro} />}
+      {tab === "wishlist" && <WishlistScreen tree={tree} hits={hits} watching={watching} onAdd={addWish} onAddMany={addWishes} onOpenCard={setDetail} columns={columns} pro={pro} />}
       {tab === "scan" && <ScanScreen canScan={visionReal} scan={FALLBACK.scan} onAddScanned={addScanned} onDone={() => setTab("library")} />}
       {tab === "passport" && <PassportScreen passport={passport} pro={pro} />}
       <Text style={styles.foot}>
@@ -925,7 +925,7 @@ function BigStat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function WishlistScreen({ tree, hits, onAdd, onAddMany, columns, pro }: { tree: WishNode; hits: WishHit[]; onAdd: (t: string) => void; onAddMany: (t: string[]) => void; columns: number; pro: boolean }) {
+function WishlistScreen({ tree, hits, watching, onAdd, onAddMany, onOpenCard, columns, pro }: { tree: WishNode; hits: WishHit[]; watching: WatchedCard[]; onAdd: (t: string) => void; onAddMany: (t: string[]) => void; onOpenCard: (c: DetailCard) => void; columns: number; pro: boolean }) {
   const [text, setText] = useState("");
   const [iv, setIv] = useState(false);
   const submit = () => {
@@ -969,7 +969,20 @@ function WishlistScreen({ tree, hits, onAdd, onAddMany, columns, pro }: { tree: 
         </>
       )}
 
-      <View style={[styles.treeBox, { marginTop: 14 }]}>
+      {watching.length > 0 ? (
+        <>
+          <Text style={[styles.colH, { marginTop: 20 }]}>Cards you're tracking · {watching.length}</Text>
+          <Grid columns={columns}>
+            {[...watching]
+              .sort((a, b) => (watchEdge(b) ?? -999) - (watchEdge(a) ?? -999))
+              .map((w, i) => (
+                <WatchCard key={`${w.key.set}-${w.key.number}-${i}`} w={w} onOpenCard={onOpenCard} />
+              ))}
+          </Grid>
+        </>
+      ) : null}
+
+      <View style={[styles.treeBox, { marginTop: 18 }]}>
         {tree.children.map((c) => (
           <TreeNodeView key={c.id} node={c} depth={0} hits={hits} />
         ))}
