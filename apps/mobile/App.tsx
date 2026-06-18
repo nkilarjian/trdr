@@ -723,7 +723,7 @@ function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { a
         <View style={styles.emptyBox}>
           {loading ? <ActivityIndicator color={C.accent} /> : null}
           <Text style={styles.emptyText}>
-            {loading ? "Finding cards priced under market value…" : watching.length ? "No deals right now — here's what you're watching." : "No deals yet. Add cards to your wishlist to start tracking them."}
+            {loading ? "Finding cards priced under market value…" : watching.length ? "No standout deals this minute — here's where your cards sit vs. market value." : "No deals yet. Add cards to your wishlist to start tracking them."}
           </Text>
         </View>
       ) : (
@@ -768,9 +768,11 @@ function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { a
         <>
           <Text style={[styles.colH, { marginTop: 22 }]}>Watching · {watching.length}</Text>
           <Grid columns={columns}>
-            {watching.map((w, i) => (
-              <WatchCard key={`${w.key.set}-${w.key.number}-${i}`} w={w} onOpenCard={onOpenCard} />
-            ))}
+            {[...watching]
+              .sort((a, b) => (watchEdge(b) ?? -999) - (watchEdge(a) ?? -999))
+              .map((w, i) => (
+                <WatchCard key={`${w.key.set}-${w.key.number}-${i}`} w={w} onOpenCard={onOpenCard} />
+              ))}
           </Grid>
         </>
       ) : null}
@@ -778,10 +780,19 @@ function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { a
   );
 }
 
+// How a watched card's cheapest current listing compares to its market value.
+function watchEdge(w: WatchedCard): number | null {
+  const fv = w.fairValue?.point ?? 0;
+  const ask = w.lowestAsk ?? 0;
+  return fv > 0 && ask > 0 ? Math.round((1 - ask / fv) * 100) : null;
+}
+
 function WatchCard({ w, onOpenCard }: { w: WatchedCard; onOpenCard: (c: DetailCard) => void }) {
   const k = w.key;
   const name = `${k.set}${k.number ? ` #${k.number}` : ""}${k.variant ? ` ${k.variant}` : ""}`;
-  const val = w.fairValue ? `$${Math.round(w.fairValue.point).toLocaleString()}` : "—";
+  const fv = w.fairValue?.point ?? 0;
+  const ask = w.lowestAsk ?? 0;
+  const edge = watchEdge(w);
   return (
     <Pressable style={styles.itemCard} onPress={() => onOpenCard({ key: k, imageUrl: w.imageUrl, name })}>
       <CardImage uri={w.imageUrl} label={`${k.grader} ${k.grade}`} size={46} />
@@ -790,12 +801,21 @@ function WatchCard({ w, onOpenCard }: { w: WatchedCard; onOpenCard: (c: DetailCa
           {name}
         </Text>
         <Text style={styles.cardSub} numberOfLines={1}>
-          {k.grader} {k.grade}
-          {w.lowestAsk ? ` · lowest ask $${Math.round(w.lowestAsk).toLocaleString()}` : ""}
+          {k.grader} {k.grade} · value ${money(fv)}
         </Text>
         <View style={styles.cardPriceRow}>
-          <Text style={styles.cardPrice}>{val}</Text>
-          <Text style={styles.cardSub}>market value</Text>
+          <Text style={styles.cardPrice}>{ask > 0 ? `$${money(ask)}` : fv > 0 ? `$${money(fv)}` : "—"}</Text>
+          {edge != null && edge > 0 ? (
+            <View style={styles.underPill}>
+              <Text style={styles.underPillText}>{edge}% under</Text>
+            </View>
+          ) : edge != null && edge < 0 ? (
+            <Text style={styles.cardSub}>{Math.abs(edge)}% over value</Text>
+          ) : ask > 0 ? (
+            <Text style={styles.cardSub}>lowest ask</Text>
+          ) : (
+            <Text style={styles.cardSub}>market value</Text>
+          )}
         </View>
       </View>
       <Ionicons name="chevron-forward" size={16} color={C.muted} style={{ alignSelf: "center" }} />

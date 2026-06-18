@@ -78,8 +78,8 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   },
   signal: {
     transactionCostPct: 0.15, // eBay + payment + shipping, round-trip-ish
-    marginPct: 0.08,
-    confidenceGate: 0.7,
+    marginPct: 0.05, // edge required beyond costs (was 0.08 — too few deals ever fired)
+    confidenceGate: 0.55, // many real cards sit at 0.5–0.65 confidence; 0.7 gated them all out
   },
   closeForecast: {
     timeTierMultiplier: { gt24h: 2.1, h6to24: 1.55, h1to6: 1.2, lt1h: 1.05 },
