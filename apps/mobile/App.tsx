@@ -951,8 +951,9 @@ function WishlistScreen({ tree, hits, watching, onAdd, onAddMany, onRemoveWish, 
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <Text style={[styles.colH, { marginBottom: 0 }]}>Your wishlist</Text>
         {tree.children.length > 0 ? (
-          <Pressable onPress={onClear} hitSlop={8}>
-            <Text style={{ color: C.accent, fontSize: 12, fontWeight: "500" }}>Clear all</Text>
+          <Pressable onPress={onClear} style={styles.clearBtn} hitSlop={8}>
+            <Ionicons name="trash-outline" size={14} color={C.red} />
+            <Text style={styles.clearBtnText}>Clear all</Text>
           </Pressable>
         ) : null}
       </View>
@@ -1094,8 +1095,8 @@ function TreeNodeView({ node, depth, hits, onRemoveWish }: { node: WishNode; dep
           </View>
         ) : null}
         {isLeaf && node.wishId ? (
-          <Pressable onPress={() => onRemoveWish(node.wishId as string)} hitSlop={10} style={{ marginLeft: 8 }} accessibilityLabel="Remove wish">
-            <Text style={{ color: C.muted, fontSize: 14 }}>✕</Text>
+          <Pressable onPress={() => onRemoveWish(node.wishId as string)} hitSlop={12} style={{ marginLeft: "auto", paddingLeft: 8 }} accessibilityLabel="Remove wish">
+            <Ionicons name="close-circle" size={19} color={C.muted} />
           </Pressable>
         ) : null}
       </View>
@@ -1700,6 +1701,8 @@ const styles = StyleSheet.create({
   underPill: { backgroundColor: "#e7f5ec", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
   underPillText: { color: C.green, fontSize: 11, fontWeight: "600" },
   cardProMeta: { color: C.muted, fontSize: 10, fontFamily: MONO, marginTop: 4 },
+  clearBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  clearBtnText: { color: C.red, fontSize: 12, fontWeight: "600" },
   emptyBox: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 14 },
   emptyText: { color: C.muted, fontSize: 14, textAlign: "center", paddingHorizontal: 30, lineHeight: 20 },
   deal: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 10, marginBottom: 7 },

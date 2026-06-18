@@ -95,10 +95,16 @@ export function buildAlert(input: BuildAlertInput): Alert | null {
  */
 export function ebayDeepLink(itemId: string, epnCampaignId?: string, searchQuery?: string): string {
   const isPlaceholder = /^(v-|syn-)/.test(itemId);
+  // eBay's /itm/ URL needs the LEGACY numeric id. The Browse API returns a RESTful
+  // id like "v1|137281996442|0" — the middle segment is the legacy id; the raw
+  // "v1|…|0" form gives a broken/error page.
+  const legacyId = itemId.includes("|") ? itemId.split("|")[1] : itemId;
   const url =
     isPlaceholder && searchQuery
       ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchQuery)}`
-      : `https://www.ebay.com/itm/${itemId}`;
-  if (!epnCampaignId) return url;
+      : `https://www.ebay.com/itm/${legacyId}`;
+  // Only tag a REAL affiliate campaign; the "DEMO-EPN" placeholder can break the
+  // affiliate redirect, so fall through to a clean URL.
+  if (!epnCampaignId || epnCampaignId === "DEMO-EPN") return url;
   return `${url}${url.includes("?") ? "&" : "?"}mkcid=1&campid=${epnCampaignId}`;
 }
