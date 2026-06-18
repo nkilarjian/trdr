@@ -6,7 +6,6 @@ import {
   buildWishTree,
   computeFairValue,
   ebayDeepLink,
-  evaluateSignal,
   scoreInterest,
   type Grader,
   type ActiveListing,
@@ -80,8 +79,9 @@ export async function scanWishlist(
         const comps = await providers.market.getSoldComps(key, window);
         if (comps.length) {
           const fv = computeFairValue({ comps, now: nowMs });
-          const decision = evaluateSignal(listing, fv, undefined, nowMs);
-          value = decision.expectedEdge;
+          // "Worth a look" is the lenient view: how far under the actual market
+          // value (point) the listing is — not the strict alert's band-lower edge.
+          value = fv.point - listing.currentPrice;
           fairPoint = fv.point;
           confidence = fv.confidence;
           fairBand = { lower: fv.lower, point: fv.point, upper: fv.upper };
