@@ -61,7 +61,7 @@ export async function scanWishlist(
   await Promise.all(
     specs.map(async (spec) => {
     const listings = await providers.market.searchActive({
-      keywords: spec.subject,
+      keywords: spec.subject ?? spec.category,
       key: { set: spec.set, number: spec.number, variant: spec.variant, grader: spec.grader as Grader, grade: spec.minGrade } as Partial<CanonicalCardKey>,
     });
 
@@ -80,6 +80,7 @@ export async function scanWishlist(
       wishPop = await providers.grading.getPopulation(wishKey);
     }
 
+    const candidates: WishHit[] = [];
     for (const listing of listings) {
       // Drop obvious search mismatches when we know the number/variant.
       if (wishKey && !titleMatchesSpec(listing.title, spec)) continue;
@@ -120,9 +121,9 @@ export async function scanWishlist(
         maxPrice: spec.maxPrice,
       });
 
-      if (!score.worthIt) continue;
+      if (score.overBudget) continue; // only hide what's over the user's stated budget
 
-      const hit: WishHit = {
+      candidates.push({
         wishId: spec.id,
         itemId: listing.itemId,
         title: listing.title,
@@ -136,11 +137,18 @@ export async function scanWishlist(
         fairBand,
         imageUrl: listing.slabPhotoUrls[0],
         deepLink: ebayDeepLink(listing.itemId, opts.epnCampaignId, listing.title),
-      };
-      // a listing can match several wishes — keep the strongest attribution
-      const existing = byItem.get(listing.itemId);
-      if (!existing || hit.interest > existing.interest) byItem.set(listing.itemId, hit);
+      });
     }
+
+    // Surface the strongest matches for THIS wish (value/cool first, then cheapest),
+    // capped so one wish can't flood the feed — always shows real listings to buy.
+    candidates
+      .sort((a, b) => b.interest - a.interest || a.currentPrice - b.currentPrice)
+      .slice(0, 8)
+      .forEach((hit) => {
+        const existing = byItem.get(hit.itemId);
+        if (!existing || hit.interest > existing.interest) byItem.set(hit.itemId, hit);
+      });
     }),
   );
 
