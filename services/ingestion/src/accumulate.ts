@@ -14,30 +14,53 @@ export function keySig(k: CanonicalCardKey): string {
   return [k.set, k.number, k.variant ?? "", k.grader, k.grade, k.qualifier ?? ""].join("|");
 }
 
-const PREMIUM_PARALLELS = ["refractor", "x-fractor", "xfractor", "superfractor", "sapphire", "atomic", "1/1", "1 of 1", "gold ", "orange ", "red ", "purple ", "black "];
+// Words that mark a comp as NOT the plain base card: premium parallels, inserts,
+// color parallels, and other product lines. A base card only matches comps whose
+// title contains none of these EXCEPT the ones already in its own set name (so a
+// base "Prizm" card isn't rejected by the word "prizm", but a base "Mosaic" card
+// rejects "prizm"/"genesis"/"silver"/… as different cards).
+const NON_BASE_MARKERS = [
+  // premium parallels & inserts
+  "refractor", "x-fractor", "xfractor", "superfractor", "sapphire", "atomic", "genesis", "reactive", "choice",
+  "camo", "disco", "mojo", "scope", "pulsar", "fluorescent", "cracked ice", "fast break", "no huddle", "press proof",
+  "hyper", "shimmer", "velocity", "wave", "snakeskin", "kaleidoscope", "tmall", "downtown", "color blast",
+  // color parallels (team-name colors red/blue/green/white/black left out to avoid false drops)
+  "silver", "gold", "bronze", "platinum", "orange", "purple", "pink", "teal", "neon", "aqua", "lime", "magenta",
+  // other major product lines — a base card should only match its OWN product
+  "prizm", "optic", "select", "chrome", "contenders", "obsidian", "spectra", "certified", "phoenix",
+  "illusions", "revolution", "immaculate", "flawless", "absolute", "playbook", "origins", "mosaic", "donruss",
+];
 
 function gradeFromTitle(title: string): number | null {
   const m = title.match(/\b(?:psa|cgc|sgc|bgs|bvg|beckett)\s*([0-9]{1,2}(?:\.5)?)\b/i);
   return m ? Number(m[1]) : null;
 }
 
-// A sold comp whose title contradicts the card key (wrong grade, or a premium
-// parallel for a base card) must be dropped before it can warp the value — the
-// single chokepoint covering BOTH accumulated and live comps. Blank titles
-// (observed auction closes) are trusted.
+// A sold comp whose title contradicts the card key (wrong grade/parallel/product,
+// an autograph, or a serial-numbered parallel) must be dropped before it can warp
+// the value — the chokepoint covering BOTH accumulated and live comps. Blank
+// titles (observed auction closes) are trusted.
 export function compMatchesKey(title: string, key: CanonicalCardKey): boolean {
   const t = (title || "").toLowerCase();
   if (!t) return true;
   const g = gradeFromTitle(t);
-  if (g != null && Math.abs(g - key.grade) > 0.01) return false;
+  if (g != null && Math.abs(g - key.grade) > 0.01) return false; // wrong grade
+
   if (key.variant) {
+    // A specific parallel (e.g. "Genesis", "Silver") must mention it in the title.
     return key.variant
       .toLowerCase()
       .split(/\s+/)
       .filter((w) => w.length > 1)
       .every((w) => t.includes(w));
   }
-  return !PREMIUM_PARALLELS.some((p) => t.includes(p));
+
+  // Base/standard card: autographs and serial-numbered cards are never the base.
+  if (/\bsigned\b|\bauto(?:graph|ed)?\b/.test(t)) return false;
+  if (/\/\s*\d{1,4}\b/.test(t)) return false;
+  // …and any parallel/insert/other-product word that isn't part of THIS set name.
+  const set = (key.set ?? "").toLowerCase();
+  return !NON_BASE_MARKERS.some((w) => t.includes(w) && !set.includes(w));
 }
 
 /** Where the accumulated sold-comps live. Reader and recorder must agree. */
