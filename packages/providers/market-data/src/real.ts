@@ -99,10 +99,21 @@ export class RealMarketDataProvider implements MarketDataProvider {
 
 // ── query building ──
 
+// eBay lists players in plain ASCII ("Luka Doncic"), so a query carrying accents
+// ("Dončić") matches almost nothing. Strip diacritics from every search.
+function stripAccents(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
 function queryFor(q: ActiveQuery): string {
-  if (q.keywords) return q.keywords;
-  if (q.key) return keyQuery(q.key);
-  return "graded trading card";
+  // Combine the keywords (player/subject) AND the card key. Using only one meant a
+  // wishlist search was JUST the player name — too broad, often empty, and it
+  // ignored the set/number/grade entirely.
+  const parts: string[] = [];
+  if (q.keywords) parts.push(q.keywords);
+  if (q.key) parts.push(keyQuery(q.key));
+  const query = parts.length ? parts.join(" ") : "graded trading card";
+  return stripAccents(query).replace(/\s+/g, " ").trim();
 }
 function keyQuery(k: Partial<CanonicalCardKey>): string {
   return [k.set, k.number ? `#${k.number}` : "", k.variant, k.grader, k.grade].filter(Boolean).join(" ").trim();
