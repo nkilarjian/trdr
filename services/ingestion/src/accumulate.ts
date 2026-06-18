@@ -14,6 +14,32 @@ export function keySig(k: CanonicalCardKey): string {
   return [k.set, k.number, k.variant ?? "", k.grader, k.grade, k.qualifier ?? ""].join("|");
 }
 
+const PREMIUM_PARALLELS = ["refractor", "x-fractor", "xfractor", "superfractor", "sapphire", "atomic", "1/1", "1 of 1", "gold ", "orange ", "red ", "purple ", "black "];
+
+function gradeFromTitle(title: string): number | null {
+  const m = title.match(/\b(?:psa|cgc|sgc|bgs|bvg|beckett)\s*([0-9]{1,2}(?:\.5)?)\b/i);
+  return m ? Number(m[1]) : null;
+}
+
+// A sold comp whose title contradicts the card key (wrong grade, or a premium
+// parallel for a base card) must be dropped before it can warp the value — the
+// single chokepoint covering BOTH accumulated and live comps. Blank titles
+// (observed auction closes) are trusted.
+export function compMatchesKey(title: string, key: CanonicalCardKey): boolean {
+  const t = (title || "").toLowerCase();
+  if (!t) return true;
+  const g = gradeFromTitle(t);
+  if (g != null && Math.abs(g - key.grade) > 0.01) return false;
+  if (key.variant) {
+    return key.variant
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 1)
+      .every((w) => t.includes(w));
+  }
+  return !PREMIUM_PARALLELS.some((p) => t.includes(p));
+}
+
 /** Where the accumulated sold-comps live. Reader and recorder must agree. */
 export function soldStorePath(env: NodeJS.ProcessEnv = process.env): string {
   return env.SOLD_STORE_PATH ?? fileURLToPath(new URL("../data/sold-comps.json", import.meta.url));
@@ -131,6 +157,7 @@ export class AccumulatingMarketDataProvider implements MarketDataProvider {
     }
     const seen = new Set<string>();
     return [...accumulated, ...live].filter((c) => {
+      if (!compMatchesKey(c.rawTitle, key)) return false; // wrong card/grade — would warp the value
       if (!c.itemId || seen.has(c.itemId)) return c.itemId === "" ? true : false;
       seen.add(c.itemId);
       return true;

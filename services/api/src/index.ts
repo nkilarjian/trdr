@@ -61,7 +61,7 @@ const capabilities = {
   vision: process.env.VISION_BACKEND === "claude" && process.env.ANTHROPIC_API_KEY ? "claude" : "mock",
   grading: process.env.PSA_API_TOKEN || process.env.CGC_API_TOKEN || process.env.SGC_API_TOKEN || process.env.BGS_API_TOKEN ? "real" : "mock",
 };
-app.get("/health", async () => ({ ok: true, providers: capabilities }));
+app.get("/health", async () => ({ ok: true, build: "comp-key-filter", providers: capabilities }));
 
 // ── eBay Marketplace Account Deletion/Closure notifications ──
 // Required to activate eBay production keys. eBay first sends GET ?challenge_code
