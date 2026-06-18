@@ -66,17 +66,18 @@ const FALLBACK = snapshot as unknown as Feed;
 // Fastify API; otherwise the app renders the bundled snapshot offline.
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
 
+// Light, eBay-style palette: white surfaces, near-black text, eBay blue.
 const C = {
-  bg: "#0a0e16",
-  panel: "#0f1622",
-  panel2: "#0d1420",
-  line: "#1c2535",
-  ink: "#e6edf3",
-  muted: "#8b97a8",
-  green: "#3fb950",
-  amber: "#d29922",
-  red: "#f85149",
-  accent: "#58a6ff",
+  bg: "#f4f5f7", // page background (light gray)
+  panel: "#ffffff", // cards / surfaces
+  panel2: "#f1f3f5", // subtle inset surface
+  line: "#e6e8eb", // hairline borders
+  ink: "#15171a", // primary text (near-black)
+  muted: "#70757c", // secondary text
+  green: "#157347", // discount / gains
+  amber: "#9a6700",
+  red: "#c0392b", // losses
+  accent: "#0654ba", // eBay blue (links, buttons, active)
 };
 
 // Monospace for numbers — the terminal feel. Web gets a real mono stack; native
@@ -455,7 +456,7 @@ export default function App() {
           <Text style={[styles.ctrlText, { fontSize: textScale > 1 ? 15 : 13 }]}>A</Text>
         </Pressable>
         <Pressable onPress={() => setPro((p) => !p)} style={[styles.ctrlChip, pro && styles.ctrlChipOn]}>
-          <Text style={[styles.ctrlText, { color: pro ? "#04122b" : C.muted }]}>{pro ? "Pro" : "Simple"}</Text>
+          <Text style={[styles.ctrlText, { color: pro ? "#ffffff" : C.muted }]}>{pro ? "Pro" : "Simple"}</Text>
         </Pressable>
         {source === "live" ? (
           <View style={[styles.srcChip, styles.srcLive]}>
@@ -471,7 +472,7 @@ export default function App() {
       <SafeAreaProvider>
         <ScaleCtx.Provider value={textScale}>
           <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-            <StatusBar style="light" />
+            <StatusBar style="dark" />
             <CloudSync specs={specs} holdings={holdings} onLoad={onCloudLoad} />
             {header}
             {inner}
@@ -489,7 +490,7 @@ export default function App() {
       <SafeAreaProvider>
         <ScaleCtx.Provider value={textScale}>
           <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-            <StatusBar style="light" />
+            <StatusBar style="dark" />
             <Landing onDone={finishOnboarding} />
           </SafeAreaView>
         </ScaleCtx.Provider>
@@ -525,7 +526,7 @@ export default function App() {
       <View style={styles.bottomBar}>
         {tabs.map((t) => (
           <Pressable key={t.key} style={styles.bottomTab} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }}>
-            <Ionicons name={t.icon} size={23} color={tab === t.key ? C.accent : C.muted} />
+            <Ionicons name={t.icon} size={20} color={tab === t.key ? C.accent : C.muted} />
             <Text style={[styles.bottomTabText, { color: tab === t.key ? C.accent : C.muted }]}>{t.label.split(" · ")[0]}</Text>
           </Pressable>
         ))}
@@ -734,7 +735,7 @@ function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { a
           const under = fv > 0 && price > 0 ? Math.round((1 - price / fv) * 100) : 0;
           return (
             <Pressable key={a.itemId} style={styles.itemCard} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title, listingUrl: vm.deepLink })}>
-              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={66} />
+              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={46} />
               <View style={styles.cardBody}>
                 <Text style={styles.cardTitle} numberOfLines={2}>
                   {vm.title}
@@ -783,7 +784,7 @@ function WatchCard({ w, onOpenCard }: { w: WatchedCard; onOpenCard: (c: DetailCa
   const val = w.fairValue ? `$${Math.round(w.fairValue.point).toLocaleString()}` : "—";
   return (
     <Pressable style={styles.itemCard} onPress={() => onOpenCard({ key: k, imageUrl: w.imageUrl, name })}>
-      <CardImage uri={w.imageUrl} label={`${k.grader} ${k.grade}`} size={66} />
+      <CardImage uri={w.imageUrl} label={`${k.grader} ${k.grade}`} size={46} />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {name}
@@ -928,7 +929,7 @@ function WishlistScreen({ tree, hits, onAdd, onAddMany, columns, pro }: { tree: 
       ) : (
         <>
           <Pressable style={styles.buildBtn} onPress={() => setIv(true)}>
-            <Ionicons name="sparkles-outline" size={16} color="#04122b" />
+            <Ionicons name="sparkles-outline" size={16} color="#ffffff" />
             <Text style={styles.buildBtnText}>Build my wishlist</Text>
           </Pressable>
           <View style={[styles.addRow, { marginTop: 8 }]}>
@@ -1061,7 +1062,7 @@ function HitCard({ hit }: { hit: WishHit }) {
   const under = fv > 0 && hit.currentPrice > 0 ? Math.round((1 - hit.currentPrice / fv) * 100) : 0;
   return (
     <Pressable style={styles.itemCard} onPress={() => openExternal(hit.deepLink)}>
-      <CardImage uri={hit.imageUrl} label={hit.buyingOption === "AUCTION" ? "Auction" : "BIN"} size={66} />
+      <CardImage uri={hit.imageUrl} label={hit.buyingOption === "AUCTION" ? "Auction" : "BIN"} size={46} />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {hit.title}
@@ -1146,7 +1147,7 @@ function CardDetailModal({
         <View style={cd.handle} />
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={{ flexDirection: "row", gap: 14, marginBottom: 4 }}>
-            <CardImage uri={card.imageUrl} label={`${k.grader} ${k.grade}`} size={96} />
+            <CardImage uri={card.imageUrl} label={`${k.grader} ${k.grade}`} size={84} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={cd.name}>{card.name}</Text>
               <View style={cd.gradeChip}>
@@ -1233,12 +1234,12 @@ function CardDetailModal({
 
 const cd = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)" },
-  sheet: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "88%", backgroundColor: "#0d1420", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: "#25303f", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#28323f", alignSelf: "center", marginBottom: 14 },
-  name: { color: C.ink, fontSize: 16, fontWeight: "700", lineHeight: 21 },
-  gradeChip: { alignSelf: "flex-start", marginTop: 7, borderWidth: 1, borderColor: "#1f3a5f", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
+  sheet: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "88%", backgroundColor: "#ffffff", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: "#e6e8eb", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#d4d7dc", alignSelf: "center", marginBottom: 14 },
+  name: { color: C.ink, fontSize: 15, fontWeight: "600", lineHeight: 20 },
+  gradeChip: { alignSelf: "flex-start", marginTop: 7, borderWidth: 1, borderColor: "#b5d4f4", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
   gradeChipText: { color: C.accent, fontFamily: MONO, fontSize: 11 },
-  value: { color: C.ink, fontFamily: MONO, fontSize: 26, marginTop: 10 },
+  value: { color: C.ink, fontFamily: MONO, fontSize: 21, fontWeight: "600", marginTop: 9 },
   band: { color: C.muted, fontFamily: MONO, fontSize: 11, marginTop: 2 },
   spark: { flexDirection: "row", alignItems: "flex-end", gap: 3, height: 40, marginTop: 14, marginBottom: 6 },
   sparkBar: { flex: 1, backgroundColor: C.green, borderRadius: 1, minHeight: 4, opacity: 0.85 },
@@ -1255,10 +1256,10 @@ const cd = StyleSheet.create({
   saveBtn: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, alignItems: "center", marginTop: 2 },
   saveText: { color: C.ink, fontWeight: "600", fontSize: 13 },
   cta: { flex: 1, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  ctaText: { color: "#04122b", fontWeight: "700", fontSize: 14 },
+  ctaText: { color: "#ffffff", fontWeight: "700", fontSize: 14 },
   ctaAlt: { flex: 1, borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
   ctaAltText: { color: C.ink, fontWeight: "600", fontSize: 14 },
-  removeBtn: { width: 48, borderWidth: 1, borderColor: "#3a1f24", borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  removeBtn: { width: 48, borderWidth: 1, borderColor: "#f0caca", borderRadius: 10, alignItems: "center", justifyContent: "center" },
   close: { color: C.muted, fontSize: 14, textAlign: "center", marginTop: 16 },
 });
 
@@ -1465,7 +1466,7 @@ function HoldingCard({ v, onOpenCard }: { v: ValuedHolding; onOpenCard: (c: Deta
   // Pressable — no nested flex Pressable (that collapses to zero-height on iOS).
   return (
     <Pressable style={styles.itemCard} onPress={() => onOpenCard({ id: h.id, key: k, imageUrl: h.imageUrl, name, isOwned: true, holding: h })}>
-      <CardImage uri={h.imageUrl} label={`${k.grader} ${k.grade}`} size={66} />
+      <CardImage uri={h.imageUrl} label={`${k.grader} ${k.grade}`} size={46} />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {name}
@@ -1534,7 +1535,7 @@ function ScanScreen({
       {canScan ? (
         <>
           <Pressable style={styles.scanBtn} onPress={isWeb ? upload : () => runScan(undefined)}>
-            <Ionicons name="camera-outline" size={22} color="#04122b" />
+            <Ionicons name="camera-outline" size={22} color="#ffffff" />
             <Text style={styles.scanBtnText}>{isWeb ? "Upload a photo" : "Take a photo"}</Text>
             <Text style={styles.scanBtnSub}>Reads every slab in the shot</Text>
           </Pressable>
@@ -1579,7 +1580,7 @@ function ScanFlow({ scan, photoUri, onAdd, onCancel }: { scan: Scan; photoUri?: 
       <View style={styles.scanGrid}>
         {scan.valued.map((v) => (
           <View key={v.holding.id} style={styles.scanCell}>
-            <CardImage uri={v.holding.imageUrl} label={`${v.holding.key.grader} ${v.holding.key.grade}`} size={66} />
+            <CardImage uri={v.holding.imageUrl} label={`${v.holding.key.grader} ${v.holding.key.grade}`} size={46} />
             <Text style={styles.scanCheck}>✓ read</Text>
           </View>
         ))}
@@ -1590,7 +1591,7 @@ function ScanFlow({ scan, photoUri, onAdd, onCancel }: { scan: Scan; photoUri?: 
           <View style={styles.scanGrid}>
             {scan.review.map((r) => (
               <View key={r.detection.id} style={styles.scanCell}>
-                <CardImage uri={r.detection.cropUrl} label="?" size={66} />
+                <CardImage uri={r.detection.cropUrl} label="?" size={46} />
                 <Text style={styles.scanQ}>tap to confirm</Text>
               </View>
             ))}
@@ -1612,7 +1613,7 @@ function ScanFlow({ scan, photoUri, onAdd, onCancel }: { scan: Scan; photoUri?: 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, flexDirection: "row", alignItems: "baseline", gap: 10 },
-  brand: { color: C.ink, fontSize: 20, fontWeight: "700", letterSpacing: 2 },
+  brand: { color: C.ink, fontSize: 17, fontWeight: "500", letterSpacing: 1 },
   sub: { color: C.muted, fontSize: 12 },
   srcChip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   srcLive: { borderColor: "rgba(63,185,80,.4)" },
@@ -1633,16 +1634,16 @@ const styles = StyleSheet.create({
   feedMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginBottom: 10 },
   feedFoot: { color: C.muted, fontSize: 11, fontFamily: MONO, lineHeight: 16, marginTop: 6 },
   // Clean, eBay-style card: photo · title/condition/price · chevron.
-  itemCard: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 11, marginBottom: 9 },
+  itemCard: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 8, marginBottom: 7 },
   cardBody: { flex: 1, minWidth: 0, justifyContent: "center" },
-  cardTitle: { color: C.ink, fontSize: 15, fontWeight: "600", lineHeight: 20 },
-  cardSub: { color: C.muted, fontSize: 12, marginTop: 3 },
+  cardTitle: { color: C.ink, fontSize: 13, fontWeight: "500", lineHeight: 17 },
+  cardSub: { color: C.muted, fontSize: 11, marginTop: 2 },
   cardPriceRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 7 },
-  cardPrice: { color: C.ink, fontSize: 18, fontWeight: "700", fontFamily: MONO },
-  cardPL: { fontSize: 12, fontFamily: MONO },
-  underPill: { backgroundColor: "#102a18", borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 },
-  underPillText: { color: C.green, fontSize: 12, fontWeight: "600" },
-  cardProMeta: { color: C.muted, fontSize: 11, fontFamily: MONO, marginTop: 5 },
+  cardPrice: { color: C.ink, fontSize: 15, fontWeight: "600", fontFamily: MONO },
+  cardPL: { fontSize: 11, fontFamily: MONO },
+  underPill: { backgroundColor: "#e7f5ec", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
+  underPillText: { color: C.green, fontSize: 11, fontWeight: "600" },
+  cardProMeta: { color: C.muted, fontSize: 10, fontFamily: MONO, marginTop: 4 },
   emptyBox: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 14 },
   emptyText: { color: C.muted, fontSize: 14, textAlign: "center", paddingHorizontal: 30, lineHeight: 20 },
   deal: { flexDirection: "row", alignItems: "center", backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 10, marginBottom: 7 },
@@ -1667,10 +1668,10 @@ const styles = StyleSheet.create({
 
   passport: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 18 },
   ppGradeRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
-  gradeChip: { backgroundColor: "#04122b", borderWidth: 1, borderColor: "#3a72b8", borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3 },
+  gradeChip: { backgroundColor: "#e6f1fb", borderWidth: 1, borderColor: "#b5d4f4", borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3 },
   gradeChipText: { color: C.accent, fontWeight: "800", fontSize: 13 },
   ppCert: { color: C.muted, fontSize: 11 },
-  verified: { marginLeft: "auto", borderWidth: 1, borderColor: "#3a72b866", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
+  verified: { marginLeft: "auto", borderWidth: 1, borderColor: "#b5d4f4", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   verifiedText: { color: C.accent, fontSize: 11 },
   ppName: { color: C.ink, fontSize: 15, fontWeight: "700", marginBottom: 4 },
   ppPoint: { color: C.ink, fontSize: 33, fontWeight: "800", letterSpacing: -1, fontFamily: MONO },
@@ -1695,17 +1696,17 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   input: { flex: 1, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, color: C.ink, fontSize: 13 },
   addBtn: { backgroundColor: C.accent, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 10 },
-  addBtnText: { color: "#04122b", fontWeight: "700", fontSize: 13 },
+  addBtnText: { color: "#ffffff", fontWeight: "700", fontSize: 13 },
   hint: { color: C.muted, fontSize: 11, marginTop: 8, lineHeight: 15 },
   buildBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 12 },
-  buildBtnText: { color: "#04122b", fontSize: 14, fontWeight: "700" },
+  buildBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
   interview: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 14 },
   ivStep: { color: C.ink, fontSize: 13, fontWeight: "600", marginBottom: 8 },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   ivChip: { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: C.panel2 },
   ivChipOn: { backgroundColor: C.accent, borderColor: C.accent },
   ivChipText: { color: C.muted, fontSize: 13, fontWeight: "600" },
-  ivChipTextOn: { color: "#04122b" },
+  ivChipTextOn: { color: "#ffffff" },
   treeBox: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 6, marginTop: 12 },
   treeRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
   treeLabel: { color: C.muted, fontSize: 13 },
@@ -1725,12 +1726,12 @@ const styles = StyleSheet.create({
   sideTabTextActive: { color: C.ink },
   bottomBar: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.bg, paddingTop: 8 },
   bottomTab: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
-  bottomTabText: { fontSize: 11, fontWeight: "600" },
+  bottomTabText: { fontSize: 10, fontWeight: "500" },
 
   landWrap: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 },
   landHeadRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   landBrand: { color: C.ink, fontSize: 24, fontWeight: "800", letterSpacing: 3, fontFamily: MONO },
-  landTag: { color: C.accent, fontSize: 12, fontFamily: MONO, borderWidth: 1, borderColor: "#1f3a5f", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
+  landTag: { color: C.accent, fontSize: 12, fontFamily: MONO, borderWidth: 1, borderColor: "#b5d4f4", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
   landTitle: { color: C.ink, fontSize: 30, fontWeight: "800", letterSpacing: -0.5, lineHeight: 36, marginTop: 22 },
   landSub: { color: C.muted, fontSize: 15, lineHeight: 22, marginTop: 12 },
   landPanel: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginTop: 22 },
@@ -1741,20 +1742,20 @@ const styles = StyleSheet.create({
   obTitle: { color: C.ink, fontSize: 26, fontWeight: "800", letterSpacing: -0.5, marginTop: 16, lineHeight: 32 },
   obSub: { color: C.muted, fontSize: 14, marginTop: 10, lineHeight: 20 },
   obRow: { flexDirection: "row", alignItems: "center", gap: 14 },
-  obIcon: { width: 46, height: 46, borderRadius: 12, backgroundColor: "#101a2e", borderWidth: 1, borderColor: "rgba(116,177,240,.3)", alignItems: "center", justifyContent: "center" },
+  obIcon: { width: 46, height: 46, borderRadius: 12, backgroundColor: "#e6f1fb", borderWidth: 1, borderColor: "#cfe0f5", alignItems: "center", justifyContent: "center" },
   obRowTitle: { color: C.ink, fontSize: 16, fontWeight: "700" },
   obRowSub: { color: C.muted, fontSize: 13, marginTop: 2, lineHeight: 18 },
   obBtn: { backgroundColor: C.accent, borderRadius: 14, paddingVertical: 16, alignItems: "center" },
-  obBtnText: { color: "#04122b", fontSize: 17, fontWeight: "700" },
+  obBtnText: { color: "#ffffff", fontSize: 17, fontWeight: "700" },
   ppHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
 
   libSummary: { flexDirection: "row", gap: 28, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 14, marginBottom: 12 },
-  libSumV: { color: C.ink, fontSize: 20, fontWeight: "800", fontFamily: MONO },
+  libSumV: { color: C.ink, fontSize: 16, fontWeight: "600", fontFamily: MONO },
   libSumL: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
   libAddLabel: { color: C.ink, fontSize: 14, fontWeight: "600", marginBottom: 6 },
   scanBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, alignItems: "center" },
-  scanBtnText: { color: "#04122b", fontSize: 16, fontWeight: "700" },
-  scanBtnSub: { color: "#0a2547", fontSize: 12, marginTop: 2 },
+  scanBtnText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
+  scanBtnSub: { color: "#dbe7f7", fontSize: 12, marginTop: 2 },
   scanBtnAlt: { borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 11, alignItems: "center", marginTop: 8 },
   scanBtnAltText: { color: C.accent, fontSize: 13, fontWeight: "600" },
   photoPreviewRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
@@ -1773,7 +1774,7 @@ const styles = StyleSheet.create({
   editLabel: { color: C.muted, fontSize: 12, width: 70 },
   editInput: { flex: 1, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, color: C.ink, fontSize: 13, fontFamily: MONO },
   editSave: { backgroundColor: C.accent, borderRadius: 8, paddingVertical: 9, alignItems: "center", marginTop: 2 },
-  editSaveText: { color: "#04122b", fontWeight: "700", fontSize: 13 },
+  editSaveText: { color: "#ffffff", fontWeight: "700", fontSize: 13 },
 
   scanBox: { backgroundColor: C.panel2, borderWidth: 1, borderColor: C.accent, borderRadius: 12, padding: 14, marginBottom: 14 },
   scanTitle: { color: C.ink, fontSize: 16, fontWeight: "700" },
@@ -1785,5 +1786,5 @@ const styles = StyleSheet.create({
   scanCancel: { flex: 1, borderWidth: 1, borderColor: C.line, borderRadius: 11, paddingVertical: 12, alignItems: "center" },
   scanCancelText: { color: C.muted, fontSize: 14, fontWeight: "600" },
   scanAdd: { flex: 2, backgroundColor: C.green, borderRadius: 11, paddingVertical: 12, alignItems: "center" },
-  scanAddText: { color: "#04210f", fontSize: 14, fontWeight: "700" },
+  scanAddText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
 });

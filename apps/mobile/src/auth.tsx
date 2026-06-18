@@ -60,7 +60,7 @@ function AuthButtonInner() {
   return (
     <>
       <Pressable style={[a.chip, a.chipOn]} onPress={startSignIn}>
-        <Text style={[a.chipText, { color: "#04122b" }]}>Sign in</Text>
+        <Text style={[a.chipText, { color: "#ffffff" }]}>Sign in</Text>
       </Pressable>
       <SignInModal visible={open} onClose={() => setOpen(false)} />
     </>
@@ -199,7 +199,7 @@ function SignInModal({ visible, onClose }: { visible: boolean; onClose: () => vo
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@email.com"
-                placeholderTextColor="#8b97a8"
+                placeholderTextColor="#70757c"
                 autoCapitalize="none"
                 keyboardType="email-address"
               />
@@ -210,7 +210,7 @@ function SignInModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           ) : (
             <>
               <Text style={a.sub}>Enter the 6-digit code we emailed to {email}.</Text>
-              <TextInput style={a.input} value={code} onChangeText={setCode} placeholder="123456" placeholderTextColor="#8b97a8" keyboardType="number-pad" />
+              <TextInput style={a.input} value={code} onChangeText={setCode} placeholder="123456" placeholderTextColor="#70757c" keyboardType="number-pad" />
               <Pressable style={a.primary} onPress={verify} disabled={busy}>
                 <Text style={a.primaryText}>{busy ? "…" : "Verify & sign in"}</Text>
               </Pressable>
@@ -269,20 +269,20 @@ function randomPassword(): string {
 }
 
 const a = StyleSheet.create({
-  chip: { borderWidth: 1, borderColor: "#232c3b", borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4, maxWidth: 130 },
-  chipOn: { backgroundColor: "#74b1f0", borderColor: "#74b1f0" },
-  chipText: { color: "#8b97a8", fontSize: 12, fontWeight: "700" },
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 22 },
-  sheet: { width: "100%", maxWidth: 360, backgroundColor: "#141925", borderWidth: 1, borderColor: "#232c3b", borderRadius: 16, padding: 20 },
-  title: { color: "#e6edf3", fontSize: 19, fontWeight: "700" },
-  sub: { color: "#8b97a8", fontSize: 13, marginTop: 6, lineHeight: 18 },
-  google: { backgroundColor: "#e6edf3", borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 16 },
-  googleText: { color: "#0b0e14", fontSize: 15, fontWeight: "700" },
-  or: { color: "#8b97a8", fontSize: 12, textAlign: "center", marginVertical: 12 },
-  input: { backgroundColor: "#0b0e14", borderWidth: 1, borderColor: "#232c3b", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: "#e6edf3", fontSize: 15 },
-  primary: { backgroundColor: "#74b1f0", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 12 },
-  primaryText: { color: "#04122b", fontSize: 15, fontWeight: "700" },
-  err: { color: "#f85149", fontSize: 13, marginTop: 12 },
+  chip: { borderWidth: 1, borderColor: "#e6e8eb", borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4, maxWidth: 130 },
+  chipOn: { backgroundColor: "#0654ba", borderColor: "#0654ba" },
+  chipText: { color: "#70757c", fontSize: 12, fontWeight: "600" },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 22 },
+  sheet: { width: "100%", maxWidth: 360, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e6e8eb", borderRadius: 16, padding: 20 },
+  title: { color: "#15171a", fontSize: 18, fontWeight: "600" },
+  sub: { color: "#70757c", fontSize: 13, marginTop: 6, lineHeight: 18 },
+  google: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#d4d7dc", borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: 16 },
+  googleText: { color: "#15171a", fontSize: 15, fontWeight: "600" },
+  or: { color: "#70757c", fontSize: 12, textAlign: "center", marginVertical: 12 },
+  input: { backgroundColor: "#f7f8f9", borderWidth: 1, borderColor: "#d4d7dc", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: "#15171a", fontSize: 15 },
+  primary: { backgroundColor: "#0654ba", borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 12 },
+  primaryText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+  err: { color: "#c0392b", fontSize: 13, marginTop: 12 },
   captcha: { alignItems: "center", marginTop: 8 },
-  cancel: { color: "#8b97a8", fontSize: 14, textAlign: "center", marginTop: 16 },
+  cancel: { color: "#70757c", fontSize: 14, textAlign: "center", marginTop: 16 },
 });
