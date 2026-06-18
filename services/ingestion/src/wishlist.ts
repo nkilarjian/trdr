@@ -7,6 +7,7 @@ import {
   computeFairValue,
   ebayDeepLink,
   scoreInterest,
+  type FairValue,
   type Grader,
   type ActiveListing,
   type CanonicalCardKey,
@@ -65,6 +66,16 @@ export async function scanWishlist(
     // (eBay listings rarely fill in structured itemSpecifics, so keyFromListing
     // almost always failed → no value → nothing was ever "worth a look").
     const wishKey = specKey(spec);
+    // Value the wished card + its pop ONCE — the same key applies to every matched
+    // listing, so doing it per-listing meant O(listings) Card-API calls and the
+    // board took ~90s. Listings with no wish key fall back to per-item lookups.
+    let wishFv: FairValue | undefined;
+    let wishPop: { atGrade: number; higher: number; total: number } | null = null;
+    if (wishKey) {
+      const comps = await providers.market.getSoldComps(wishKey, window);
+      if (comps.length) wishFv = computeFairValue({ comps, now: nowMs });
+      wishPop = await providers.grading.getPopulation(wishKey);
+    }
 
     for (const listing of listings) {
       // Drop obvious search mismatches when we know the number/variant.
@@ -75,19 +86,21 @@ export async function scanWishlist(
       let fairPoint: number | undefined;
       let confidence: number | undefined;
       let fairBand: WishHit["fairBand"];
-      if (key) {
+      let fv = wishFv;
+      let pop = wishPop;
+      if (!wishKey && key) {
         const comps = await providers.market.getSoldComps(key, window);
-        if (comps.length) {
-          const fv = computeFairValue({ comps, now: nowMs });
-          // "Worth a look" is the lenient view: how far under the actual market
-          // value (point) the listing is — not the strict alert's band-lower edge.
-          value = fv.point - listing.currentPrice;
-          fairPoint = fv.point;
-          confidence = fv.confidence;
-          fairBand = { lower: fv.lower, point: fv.point, upper: fv.upper };
-        }
+        if (comps.length) fv = computeFairValue({ comps, now: nowMs });
+        pop = await providers.grading.getPopulation(key);
       }
-      const pop = key ? await providers.grading.getPopulation(key) : null;
+      if (fv) {
+        // "Worth a look" is the lenient view: how far under the actual market
+        // value (point) the listing is — not the strict alert's band-lower edge.
+        value = fv.point - listing.currentPrice;
+        fairPoint = fv.point;
+        confidence = fv.confidence;
+        fairBand = { lower: fv.lower, point: fv.point, upper: fv.upper };
+      }
 
       const hoursLeft = listing.endTime ? Math.max(0, (Date.parse(listing.endTime) - nowMs) / 3_600_000) : undefined;
       const score = scoreInterest({
