@@ -56,7 +56,10 @@ export async function scanWishlist(
 
   const byItem = new Map<string, WishHit>();
 
-  for (const spec of specs) {
+  // Process every wish concurrently — sequential per-card network calls made a
+  // multi-card wishlist take ~50s+ (and 502 on the gateway).
+  await Promise.all(
+    specs.map(async (spec) => {
     const listings = await providers.market.searchActive({
       keywords: spec.subject,
       key: { set: spec.set, number: spec.number, variant: spec.variant, grader: spec.grader as Grader, grade: spec.minGrade } as Partial<CanonicalCardKey>,
@@ -138,7 +141,8 @@ export async function scanWishlist(
       const existing = byItem.get(listing.itemId);
       if (!existing || hit.interest > existing.interest) byItem.set(listing.itemId, hit);
     }
-  }
+    }),
+  );
 
   const hits = [...byItem.values()].sort((a, b) => b.interest - a.interest);
   return { tree: buildWishTree(specs), hits };

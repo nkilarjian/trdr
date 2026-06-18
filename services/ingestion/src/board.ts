@@ -40,7 +40,19 @@ export function specToKey(s: WishSpec): CanonicalCardKey | null {
 
 export async function scanBoard(providers: Providers, specs: WishSpec[], opts: BoardOpts = {}): Promise<Board> {
   const nowMs = opts.nowMs ?? Date.now();
-  const wishlist = await scanWishlist(providers, specs, opts);
+  // Value every card and scan the wishlist concurrently — network latency is the
+  // bulk of the board's time, and doing it card-by-card 502'd the gateway.
+  const [wishlist, valued] = await Promise.all([
+    scanWishlist(providers, specs, opts),
+    Promise.all(
+      specs.map(async (spec) => {
+        const key = specToKey(spec);
+        if (!key) return null;
+        const v = await valueCard(providers, key, { nowMs, windowDays: opts.windowDays });
+        return { key, v };
+      }),
+    ),
+  ]);
 
   const alerts: Alert[] = [];
   const watching: WatchedCard[] = [];
@@ -48,10 +60,9 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
   const watchedSeen = new Set<string>();
   let passport: PassportView | null = null;
 
-  for (const spec of specs) {
-    const key = specToKey(spec);
-    if (!key) continue;
-    const v = await valueCard(providers, key, { nowMs, windowDays: opts.windowDays });
+  for (const r of valued) {
+    if (!r) continue;
+    const { key, v } = r;
     if (!passport && v.fairValue.compCount > 0) passport = passportFrom(v, null);
 
     // Track every valued watched card so the client can show it even with no deal.
