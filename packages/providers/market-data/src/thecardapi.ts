@@ -29,6 +29,33 @@ function normalizeIso(s?: string): string {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+// Premium parallels that a BASE card must not be confused with (a base #111 is
+// not a Refractor). Set names like "Chrome"/"Prizm" are deliberately excluded.
+const PREMIUM_PARALLELS = ["refractor", "x-fractor", "xfractor", "superfractor", "sapphire", "atomic", "1/1", "1 of 1", "gold ", "orange ", "red ", "purple ", "black "];
+
+function gradeFromTitle(title: string): number | null {
+  const m = title.match(/\b(?:psa|cgc|sgc|bgs|bvg|beckett)\s*([0-9]{1,2}(?:\.5)?)\b/i);
+  return m ? Number(m[1]) : null;
+}
+
+// Guard against The Card API returning a different card/grade than asked for
+// (the #1 cause of wildly wrong values, e.g. a Refractor CGC 10 priced a base
+// CGC 9.5 at $26k). Drop comps whose title contradicts the card key.
+function compMatchesKey(title: string, key: CanonicalCardKey): boolean {
+  const t = (title || "").toLowerCase();
+  if (!t) return true; // observed/blank titles: trust the API's own grade filter
+  const g = gradeFromTitle(t);
+  if (g != null && Math.abs(g - key.grade) > 0.01) return false; // wrong grade
+  if (key.variant) {
+    return key.variant
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 1)
+      .every((w) => t.includes(w)); // must be the right parallel
+  }
+  return !PREMIUM_PARALLELS.some((p) => t.includes(p)); // base card: reject parallels
+}
+
 export class TheCardApiMarketProvider implements MarketDataProvider {
   constructor(
     private readonly base: MarketDataProvider,
@@ -77,7 +104,7 @@ export class TheCardApiMarketProvider implements MarketDataProvider {
           seller: { id: String(s.seller ?? "thecardapi"), feedbackScore: typeof s.feedback === "number" ? s.feedback : 1000, feedbackPct: 100 },
           rawTitle: s.title ?? "",
         }))
-        .filter((c) => c.soldPrice > 0);
+        .filter((c) => c.soldPrice > 0 && compMatchesKey(c.rawTitle, key));
       // Nothing for this card on TCA → let the base provider (eBay) try.
       return comps.length ? comps : this.base.getSoldComps(key, window);
     } catch (err) {
