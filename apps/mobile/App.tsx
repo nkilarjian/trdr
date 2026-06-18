@@ -133,6 +133,31 @@ function parseHolding(text: string, id: string): Holding {
   return { id, key: { set: set || "Card", number, grader, grade } };
 }
 
+// Open a URL in a real new tab. On web, Linking.openURL can navigate the current
+// tab away and/or leave a blank tab; a one-shot anchor click is reliable.
+function openExternal(url: string) {
+  if (Platform.OS === "web" && typeof document !== "undefined") {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return;
+  }
+  Linking.openURL(url).catch(() => {});
+}
+
+// Build an eBay SOLD-listings search for a card. Prefer a real recent sold title
+// (it carries the player name + exact parallel, which the canonical key lacks),
+// else fall back to the card's name + grade. Sorted most-recent-sold first.
+function ebaySoldUrl(name: string, grader: string, grade: number, sampleTitle?: string): string {
+  const base = sampleTitle && sampleTitle.length > 8 ? sampleTitle : `${name} ${grader} ${grade}`;
+  const q = base.replace(/#/g, "").replace(/\s+/g, " ").trim();
+  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&LH_Sold=1&LH_Complete=1&_sop=13`;
+}
+
 export default function App() {
   const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "scan" | "passport">("alerts");
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
@@ -1032,7 +1057,7 @@ function HitCard({ hit }: { hit: WishHit }) {
   const fv = hit.fairBand?.point ?? 0;
   const under = fv > 0 && hit.currentPrice > 0 ? Math.round((1 - hit.currentPrice / fv) * 100) : 0;
   return (
-    <Pressable style={styles.itemCard} onPress={() => Linking.openURL(hit.deepLink)}>
+    <Pressable style={styles.itemCard} onPress={() => openExternal(hit.deepLink)}>
       <CardImage uri={hit.imageUrl} label={hit.buyingOption === "AUCTION" ? "Auction" : "BIN"} size={66} />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
@@ -1100,7 +1125,7 @@ function CardDetailModal({
   const k = card.key;
   const fv = data?.fairValue;
   const comps = data?.comps ?? [];
-  const ebay = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent([k.set, k.number ? `#${k.number}` : "", k.variant, k.grader, k.grade].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1`;
+  const ebay = ebaySoldUrl(card.name, k.grader, k.grade, comps[0]?.title);
   const series = comps.map((c) => c.price).filter((p) => p > 0).reverse();
   const max = Math.max(1, ...series);
   const min = series.length ? Math.min(...series) : 0;
@@ -1146,7 +1171,7 @@ function CardDetailModal({
 
           <Text style={cd.section}>Recent sold</Text>
           {comps.length === 0 ? (
-            <Text style={cd.empty}>{loading ? "Loading sold comps…" : "No recent sold comps for this card."}</Text>
+            <Text style={cd.empty}>{loading ? "Loading sold comps…" : "No sold-price data for this exact card yet — tap “See sold on eBay” below to check."}</Text>
           ) : (
             comps.slice(0, 12).map((c, i) => (
               <View key={i} style={cd.compRow}>
@@ -1179,7 +1204,7 @@ function CardDetailModal({
           ) : null}
 
           <View style={{ flexDirection: "row", gap: 9, marginTop: 16 }}>
-            <Pressable style={cd.cta} onPress={() => Linking.openURL(ebay)}>
+            <Pressable style={cd.cta} onPress={() => openExternal(ebay)}>
               <Text style={cd.ctaText}>See sold on eBay →</Text>
             </Pressable>
             {card.isOwned && card.id && onRemove ? (
