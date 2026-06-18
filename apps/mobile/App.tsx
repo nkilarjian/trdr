@@ -555,13 +555,15 @@ function Landing({ onDone }: { onDone: () => void }) {
       <Text style={styles.landSub}>Find underpriced slabs. Track your collection like a portfolio. Built on real eBay comps.</Text>
 
       <View style={styles.landPanel}>
-        <Text style={styles.colH}>Live deals</Text>
+        <Text style={styles.colH}>Live deals · sample</Text>
         {deals.map((a) => {
           const vm = alertVM(a);
           const e = edgeOf(a);
           const sig = signal(e, a.fairValue.confidence);
+          // Tapping a sample deal enters the app — the real, tappable deals (with
+          // links to the actual eBay listings) live inside.
           return (
-            <View key={a.itemId} style={styles.deal}>
+            <Pressable key={a.itemId} style={styles.deal} onPress={onDone}>
               <CardImage uri={a.imageUrl} label={`${a.key.grade}`} size={40} />
               <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
                 <Text style={styles.dealName} numberOfLines={1}>{vm.title}</Text>
@@ -571,9 +573,10 @@ function Landing({ onDone }: { onDone: () => void }) {
                 {e >= 0 ? "+" : ""}
                 {Math.round(e * 100)}%
               </Text>
-            </View>
+            </Pressable>
           );
         })}
+        <Text style={styles.landDealHint}>Tap a deal to enter the terminal →</Text>
       </View>
 
       <View style={{ gap: 16, marginTop: 20 }}>
@@ -730,7 +733,7 @@ function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { a
           const fv = a.fairValue.point;
           const under = fv > 0 && price > 0 ? Math.round((1 - price / fv) * 100) : 0;
           return (
-            <Pressable key={a.itemId} style={styles.itemCard} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title })}>
+            <Pressable key={a.itemId} style={styles.itemCard} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title, listingUrl: vm.deepLink })}>
               <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={66} />
               <View style={styles.cardBody}>
                 <Text style={styles.cardTitle} numberOfLines={2}>
@@ -1081,7 +1084,7 @@ function HitCard({ hit }: { hit: WishHit }) {
   );
 }
 
-type DetailCard = { id?: string; key: CardKey; imageUrl?: string; name: string; isOwned?: boolean; holding?: Holding };
+type DetailCard = { id?: string; key: CardKey; imageUrl?: string; name: string; isOwned?: boolean; holding?: Holding; listingUrl?: string };
 
 // Tap-to-open card detail: photo, value band, price sparkline, recent sold comps,
 // eBay link, and (for owned cards) purchase details + remove.
@@ -1203,9 +1206,15 @@ function CardDetailModal({
             </View>
           ) : null}
 
-          <View style={{ flexDirection: "row", gap: 9, marginTop: 16 }}>
-            <Pressable style={cd.cta} onPress={() => openExternal(ebay)}>
-              <Text style={cd.ctaText}>See sold on eBay →</Text>
+          {/* For a live deal, the listing URL is the actual auction to buy. */}
+          {card.listingUrl ? (
+            <Pressable style={[cd.cta, { marginTop: 16 }]} onPress={() => openExternal(card.listingUrl as string)}>
+              <Text style={cd.ctaText}>View this listing on eBay →</Text>
+            </Pressable>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 9, marginTop: card.listingUrl ? 9 : 16 }}>
+            <Pressable style={card.listingUrl ? cd.ctaAlt : cd.cta} onPress={() => openExternal(ebay)}>
+              <Text style={card.listingUrl ? cd.ctaAltText : cd.ctaText}>See sold on eBay →</Text>
             </Pressable>
             {card.isOwned && card.id && onRemove ? (
               <Pressable style={cd.removeBtn} onPress={() => { onRemove(card.id as string); onClose(); }} accessibilityLabel="Remove card">
@@ -1247,6 +1256,8 @@ const cd = StyleSheet.create({
   saveText: { color: C.ink, fontWeight: "600", fontSize: 13 },
   cta: { flex: 1, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
   ctaText: { color: "#04122b", fontWeight: "700", fontSize: 14 },
+  ctaAlt: { flex: 1, borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
+  ctaAltText: { color: C.ink, fontWeight: "600", fontSize: 14 },
   removeBtn: { width: 48, borderWidth: 1, borderColor: "#3a1f24", borderRadius: 10, alignItems: "center", justifyContent: "center" },
   close: { color: C.muted, fontSize: 14, textAlign: "center", marginTop: 16 },
 });
@@ -1724,6 +1735,7 @@ const styles = StyleSheet.create({
   landSub: { color: C.muted, fontSize: 15, lineHeight: 22, marginTop: 12 },
   landPanel: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginTop: 22 },
   landFoot: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 16, textAlign: "center" },
+  landDealHint: { color: C.accent, fontSize: 12, marginTop: 8, textAlign: "center" },
   obWrap: { flex: 1, paddingHorizontal: 26, paddingTop: 40, paddingBottom: 28 },
   obBrand: { color: C.ink, fontSize: 22, fontWeight: "800", letterSpacing: 3 },
   obTitle: { color: C.ink, fontSize: 26, fontWeight: "800", letterSpacing: -0.5, marginTop: 16, lineHeight: 32 },
