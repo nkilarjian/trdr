@@ -1,5 +1,5 @@
 import { Children, createContext, useContext, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { ActivityIndicator, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Animated, Image, Linking, Modal, PanResponder, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -442,6 +442,7 @@ export default function App() {
           onAddScanned={addScanned}
           onAddHolding={addHolding}
           onOpenCard={setDetail}
+          onRemove={removeHolding}
           columns={columns}
           pro={pro}
         />
@@ -720,6 +721,53 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
       {Children.map(children, (child) => (
         <View style={{ width: `${100 / columns}%`, paddingHorizontal: 5 }}>{child}</View>
       ))}
+    </View>
+  );
+}
+
+// Swipe a row LEFT to reveal a red Delete button (the iOS pattern). Works with
+// touch on native + mobile web via PanResponder; tap the button to confirm.
+function SwipeRow({ children, onDelete, gap = 8 }: { children: ReactNode; onDelete: () => void; gap?: number }) {
+  const REVEAL = 84;
+  const tx = useRef(new Animated.Value(0)).current;
+  const open = useRef(false);
+  const [h, setH] = useState(0);
+  const settle = (toValue: number) =>
+    Animated.spring(tx, { toValue, useNativeDriver: Platform.OS !== "web", bounciness: 2, speed: 18 }).start();
+  const pan = useRef(
+    PanResponder.create({
+      // Only capture a clear horizontal drag — vertical scroll passes through.
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4,
+      onPanResponderMove: (_e, g) => {
+        const base = open.current ? -REVEAL : 0;
+        tx.setValue(Math.min(0, Math.max(-REVEAL - 28, base + g.dx)));
+      },
+      onPanResponderRelease: (_e, g) => {
+        const o = (open.current ? -REVEAL : 0) + g.dx < -REVEAL / 2;
+        open.current = o;
+        settle(o ? -REVEAL : 0);
+      },
+    }),
+  ).current;
+  return (
+    <View style={{ marginBottom: gap }}>
+      <View style={[swipe.behind, h ? { height: h } : null]}>
+        <Pressable
+          style={swipe.del}
+          onPress={() => {
+            open.current = false;
+            settle(0);
+            onDelete();
+          }}
+          accessibilityLabel="Delete"
+        >
+          <Ionicons name="trash-outline" size={19} color="#ffffff" />
+          <Text style={swipe.delText}>Delete</Text>
+        </Pressable>
+      </View>
+      <Animated.View onLayout={(e) => setH(e.nativeEvent.layout.height)} style={{ transform: [{ translateX: tx }] }} {...pan.panHandlers}>
+        {children}
+      </Animated.View>
     </View>
   );
 }
@@ -1131,24 +1179,34 @@ function WishlistInterview({ onBuild, onClose }: { onBuild: (wishes: string[]) =
 function TreeNodeView({ node, depth, hits, onRemoveWish }: { node: WishNode; depth: number; hits: WishHit[]; onRemoveWish: (id: string) => void }) {
   const isLeaf = !!node.wishId;
   const n = isLeaf ? hits.filter((h) => h.wishId === node.wishId).length : 0;
+  const row = (
+    <View style={[styles.treeRow, { paddingLeft: 4 + depth * 16 }]}>
+      <Text style={[styles.treeLabel, isLeaf ? styles.treeLeaf : null]}>
+        {isLeaf ? "◆ " : "› "}
+        {node.label}
+      </Text>
+      {isLeaf && n > 0 ? (
+        <View style={styles.hitBadge}>
+          <Text style={styles.hitBadgeText}>{n}</Text>
+        </View>
+      ) : null}
+      {isLeaf && node.wishId ? (
+        <Pressable onPress={() => onRemoveWish(node.wishId as string)} hitSlop={12} style={{ marginLeft: "auto", paddingLeft: 8 }} accessibilityLabel="Remove wish">
+          <Ionicons name="close-circle" size={19} color={C.muted} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
   return (
     <View>
-      <View style={[styles.treeRow, { paddingLeft: 4 + depth * 16 }]}>
-        <Text style={[styles.treeLabel, isLeaf ? styles.treeLeaf : null]}>
-          {isLeaf ? "◆ " : "› "}
-          {node.label}
-        </Text>
-        {isLeaf && n > 0 ? (
-          <View style={styles.hitBadge}>
-            <Text style={styles.hitBadgeText}>{n}</Text>
-          </View>
-        ) : null}
-        {isLeaf && node.wishId ? (
-          <Pressable onPress={() => onRemoveWish(node.wishId as string)} hitSlop={12} style={{ marginLeft: "auto", paddingLeft: 8 }} accessibilityLabel="Remove wish">
-            <Ionicons name="close-circle" size={19} color={C.muted} />
-          </Pressable>
-        ) : null}
-      </View>
+      {/* A wish (leaf) can be swiped left to delete, or tap the ✕. */}
+      {isLeaf && node.wishId ? (
+        <SwipeRow gap={0} onDelete={() => onRemoveWish(node.wishId as string)}>
+          {row}
+        </SwipeRow>
+      ) : (
+        row
+      )}
       {node.children.map((c) => (
         <TreeNodeView key={c.id} node={c} depth={depth + 1} hits={hits} onRemoveWish={onRemoveWish} />
       ))}
@@ -1350,6 +1408,12 @@ function CardDetailModal({
   );
 }
 
+const swipe = StyleSheet.create({
+  behind: { position: "absolute", top: 0, right: 0, width: 84, backgroundColor: C.red, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  del: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: 2 },
+  delText: { color: "#ffffff", fontSize: 11, fontWeight: "600" },
+});
+
 const cd = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "88%", backgroundColor: "#ffffff", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: "#e6e8eb", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
@@ -1452,6 +1516,7 @@ function LibraryScreen({
   onAddScanned,
   onAddHolding,
   onOpenCard,
+  onRemove,
   columns,
   pro,
 }: {
@@ -1461,6 +1526,7 @@ function LibraryScreen({
   onAddScanned: (v: ValuedHolding[]) => void;
   onAddHolding: (text: string) => void;
   onOpenCard: (c: DetailCard) => void;
+  onRemove: (id: string) => void;
   columns: number;
   pro: boolean;
 }) {
@@ -1566,7 +1632,9 @@ function LibraryScreen({
       ) : (
         <Grid columns={columns}>
           {holdings.map((v) => (
-            <HoldingCard key={v.holding.id} v={v} onOpenCard={onOpenCard} />
+            <SwipeRow key={v.holding.id} gap={7} onDelete={() => onRemove(v.holding.id)}>
+              <HoldingCard v={v} onOpenCard={onOpenCard} />
+            </SwipeRow>
           ))}
         </Grid>
       )}
@@ -1586,7 +1654,7 @@ function HoldingCard({ v, onOpenCard }: { v: ValuedHolding; onOpenCard: (c: Deta
   // Whole row taps open the detail sheet (photo, comps, edit, remove). Single
   // Pressable — no nested flex Pressable (that collapses to zero-height on iOS).
   return (
-    <Pressable style={styles.itemCard} onPress={() => onOpenCard({ id: h.id, key: k, imageUrl: h.imageUrl, name, isOwned: true, holding: h })}>
+    <Pressable style={[styles.itemCard, { marginBottom: 0 }]} onPress={() => onOpenCard({ id: h.id, key: k, imageUrl: h.imageUrl, name, isOwned: true, holding: h })}>
       <CardImage uri={h.imageUrl} label={`${k.grader} ${k.grade}`} size={46} />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
