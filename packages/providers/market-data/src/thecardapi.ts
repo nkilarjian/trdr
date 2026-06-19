@@ -29,6 +29,15 @@ function normalizeIso(s?: string): string {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+// Auction closes are the cleanest market signal; Best-Offer and Buy-It-Now sales
+// are asking-side. Use the listing_type, falling back to title cues ("N bids").
+function saleTypeOf(s: TcaSale): SoldComp["saleType"] {
+  const lt = (s.listing_type ?? "").toLowerCase();
+  const title = (s.title ?? "").toLowerCase();
+  if (lt.includes("auction") || /\b\d+\s*bids?\b/.test(title)) return "auction-close";
+  return "bin-accepted-offer"; // a completed fixed-price / best-offer sale
+}
+
 // Premium parallels that a BASE card must not be confused with (a base #111 is
 // not a Refractor). Set names like "Chrome"/"Prizm" are deliberately excluded.
 const PREMIUM_PARALLELS = ["refractor", "x-fractor", "xfractor", "superfractor", "sapphire", "atomic", "1/1", "1 of 1", "gold ", "orange ", "red ", "purple ", "black "];
@@ -96,7 +105,7 @@ export class TheCardApiMarketProvider implements MarketDataProvider {
           itemId: String(s.id ?? ""),
           soldPrice: Number(s.price ?? 0),
           soldAt: normalizeIso(s.sold_at ?? (s.sale_date ? `${s.sale_date}T00:00:00Z` : undefined)),
-          saleType: (s.listing_type === "auction" ? "auction-close" : "bin-accepted-offer") as SoldComp["saleType"],
+          saleType: saleTypeOf(s),
           qty: 1,
           // Real seller + feedback so the shill screen doesn't drop legit auction
           // comps (it flags auction-close wins by <10-feedback accounts). These are

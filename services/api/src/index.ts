@@ -154,7 +154,7 @@ app.post<{ Body: { key?: CanonicalCardKey } }>("/api/v1/card/detail", async (req
     .slice()
     .sort((a, b) => Date.parse(b.soldAt) - Date.parse(a.soldAt))
     .slice(0, 24)
-    .map((c) => ({ price: c.soldPrice, soldAt: c.soldAt, title: c.rawTitle }));
+    .map((c) => ({ price: c.soldPrice, soldAt: c.soldAt, title: c.rawTitle, saleType: c.saleType }));
   return { fairValue, comps };
 });
 

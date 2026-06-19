@@ -1157,7 +1157,7 @@ function CardDetailModal({
   onUpdate?: (id: string, patch: Partial<Holding>) => void;
   onRemove?: (id: string) => void;
 }) {
-  const [data, setData] = useState<{ fairValue?: { point: number; lower: number; upper: number; confidence: number; compCount: number }; comps?: { price: number; soldAt: string; title?: string }[] } | null>(null);
+  const [data, setData] = useState<{ fairValue?: { point: number; lower: number; upper: number; confidence: number; compCount: number }; comps?: { price: number; soldAt: string; title?: string; saleType?: string }[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [paid, setPaid] = useState("");
   const [date, setDate] = useState("");
@@ -1234,13 +1234,19 @@ function CardDetailModal({
           {comps.length === 0 ? (
             <Text style={cd.empty}>{loading ? "Loading sold comps…" : "No sold-price data for this exact card yet — tap “See sold on eBay” below to check."}</Text>
           ) : (
-            comps.slice(0, 12).map((c, i) => (
-              <View key={i} style={cd.compRow}>
-                <Text style={cd.compDate}>{c.soldAt.slice(0, 10)}</Text>
-                <Text style={cd.compTitle} numberOfLines={1}>{c.title || ""}</Text>
-                <Text style={cd.compPrice}>${Math.round(c.price).toLocaleString()}</Text>
-              </View>
-            ))
+            comps.slice(0, 12).map((c, i) => {
+              const auction = c.saleType === "auction-close";
+              return (
+                <View key={i} style={cd.compRow}>
+                  <Text style={cd.compDate}>{c.soldAt.slice(0, 10)}</Text>
+                  <View style={[cd.compType, { borderColor: auction ? C.accent : C.line }]}>
+                    <Text style={[cd.compTypeText, { color: auction ? C.accent : C.muted }]}>{auction ? "auction" : "BIN"}</Text>
+                  </View>
+                  <Text style={cd.compTitle} numberOfLines={1}>{c.title || ""}</Text>
+                  <Text style={cd.compPrice}>${Math.round(c.price).toLocaleString()}</Text>
+                </View>
+              );
+            })
           )}
 
           {card.isOwned && onUpdate ? (
@@ -1304,6 +1310,8 @@ const cd = StyleSheet.create({
   empty: { color: C.muted, fontSize: 12, fontFamily: MONO },
   compRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 5, borderTopWidth: 1, borderTopColor: C.line },
   compDate: { color: C.muted, fontFamily: MONO, fontSize: 11, width: 64 },
+  compType: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  compTypeText: { fontSize: 9, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.3 },
   compTitle: { color: C.muted, fontSize: 11, flex: 1 },
   compPrice: { color: C.ink, fontFamily: MONO, fontSize: 13 },
   editBox: { marginTop: 4 },
