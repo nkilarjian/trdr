@@ -36,6 +36,12 @@ function gradeFromTitle(title: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+// Whole-word match so "gold" doesn't hit "Golden State" and "red" doesn't hit "Fred".
+function hasWord(haystack: string, word: string): boolean {
+  const w = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`, "i").test(haystack);
+}
+
 // A sold comp whose title contradicts the card key (wrong grade/parallel/product,
 // an autograph, or a serial-numbered parallel) must be dropped before it can warp
 // the value — the chokepoint covering BOTH accumulated and live comps. Blank
@@ -60,7 +66,7 @@ export function compMatchesKey(title: string, key: CanonicalCardKey): boolean {
   if (/\/\s*\d{1,4}\b/.test(t)) return false;
   // …and any parallel/insert/other-product word that isn't part of THIS set name.
   const set = (key.set ?? "").toLowerCase();
-  return !NON_BASE_MARKERS.some((w) => t.includes(w) && !set.includes(w));
+  return !NON_BASE_MARKERS.some((w) => hasWord(t, w) && !set.includes(w));
 }
 
 /** Where the accumulated sold-comps live. Reader and recorder must agree. */
