@@ -93,9 +93,17 @@ export interface ActiveListing {
 export interface Alert {
   itemId: string;
   key: CanonicalCardKey;
+  title: string; // full listing title — the identity line
   fairValue: FairValue;
-  predictedClose: number; // = currentPrice for BIN
-  expectedEdge: number; // fairValue.lower − predictedClose − fees − margin
+  predictedClose: number; // = currentPrice for BIN; forecast close for auctions
+  currentPrice: number; // the asking / current bid (secondary)
+  bidCount?: number;
+  expectedEdge: number; // legacy gross edge (fairValue.lower − predictedClose − fees − margin)
+  netEdge: number; // $ realizable edge after itemized costs, off fairValue.lower
+  netEdgePct: number; // netEdge / acquisition cost
+  costs: { acquire: number; fees: number; shipping: number; tax: number }; // the "why" breakdown
+  confidenceTier: "high" | "med" | "low";
+  liquidityTag: "often" | "occasionally" | "rarely";
   sellerRisk: SellerRiskChip;
   buyingOption: "AUCTION" | "BIN";
   endTime?: string;

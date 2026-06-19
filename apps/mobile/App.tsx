@@ -171,6 +171,7 @@ export default function App() {
   // With a real backend, start EMPTY and show a loading state — never flash the
   // seeded demo deals as if they were live (that's what made it look "broken").
   const [alerts, setAlerts] = useState<Alert[]>(API_BASE ? [] : FALLBACK.alerts);
+  const [speculative, setSpeculative] = useState<Alert[]>([]);
   const [watching, setWatching] = useState<WatchedCard[]>([]);
   const [passport, setPassport] = useState<Passport>(FALLBACK.passport);
   const [hits, setHits] = useState<WishHit[]>(API_BASE ? [] : FALLBACK.wishlist.hits);
@@ -200,8 +201,9 @@ export default function App() {
       body: JSON.stringify({ specs: currentSpecs }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((b: { alerts: Alert[]; watching?: WatchedCard[]; wishlist: { hits: WishHit[] }; passport: Passport | null }) => {
+      .then((b: { alerts: Alert[]; speculative?: Alert[]; watching?: WatchedCard[]; wishlist: { hits: WishHit[] }; passport: Passport | null }) => {
         setAlerts(b.alerts);
+        setSpeculative(b.speculative ?? []);
         setWatching(b.watching ?? []);
         setHits(b.wishlist.hits);
         if (b.passport) setPassport(b.passport);
@@ -209,7 +211,7 @@ export default function App() {
         setBoardLoaded(true);
         // Cache last-good board so reopening shows real deals instantly (the live
         // scan takes several seconds; nobody should stare at a blank/old screen).
-        AsyncStorage.setItem("trdr.board", JSON.stringify({ alerts: b.alerts, watching: b.watching ?? [], hits: b.wishlist.hits })).catch(() => {});
+        AsyncStorage.setItem("trdr.board", JSON.stringify({ alerts: b.alerts, speculative: b.speculative ?? [], watching: b.watching ?? [], hits: b.wishlist.hits })).catch(() => {});
       })
       .catch(() => {
         // Unreachable/slow API: mark loaded so we stop showing a spinner forever.
@@ -264,12 +266,13 @@ export default function App() {
       AsyncStorage.getItem("trdr.board")
         .then((v) => {
           if (!active || !v) return;
-          const b = JSON.parse(v) as { alerts?: Alert[]; watching?: WatchedCard[]; hits?: WishHit[] };
+          const b = JSON.parse(v) as { alerts?: Alert[]; speculative?: Alert[]; watching?: WatchedCard[]; hits?: WishHit[] };
           if (b.alerts?.length) {
             setAlerts(b.alerts);
             setSource("live");
             setBoardLoaded(true);
           }
+          if (b.speculative?.length) setSpeculative(b.speculative);
           if (b.watching?.length) {
             setWatching(b.watching);
             setSource("live");
@@ -430,7 +433,7 @@ export default function App() {
 
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
-      {tab === "alerts" && <AlertsFeed alerts={alerts} watching={watching} columns={columns} pro={pro} onOpenCard={setDetail} loading={!boardLoaded} />}
+      {tab === "alerts" && <AlertsFeed alerts={alerts} speculative={speculative} watching={watching} columns={columns} pro={pro} onOpenCard={setDetail} loading={!boardLoaded} />}
       {tab === "library" && (
         <LibraryScreen
           holdings={holdings}
@@ -721,59 +724,105 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
   );
 }
 
-function AlertsFeed({ alerts, watching, columns, pro, onOpenCard, loading }: { alerts: Alert[]; watching: WatchedCard[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void; loading: boolean }) {
+// Time remaining on an auction, compact.
+function timeLeft(endIso?: string): string | null {
+  if (!endIso) return null;
+  const ms = Date.parse(endIso) - Date.now();
+  if (isNaN(ms)) return null;
+  if (ms <= 0) return "ended";
+  const h = ms / 3_600_000;
+  if (h >= 48) return `${Math.round(h / 24)}d`;
+  if (h >= 1) return `${Math.round(h)}h`;
+  return `${Math.max(1, Math.round(ms / 60_000))}m`;
+}
+function confChip(tier: "high" | "med" | "low") {
+  return tier === "high" ? { label: "High conf", color: C.green } : tier === "med" ? { label: "Med conf", color: C.amber } : { label: "Low conf", color: C.muted };
+}
+// Seller chip — probabilistic, never accusatory.
+function sellerChip(sr: Alert["sellerRisk"]) {
+  if (sr.manipulationRisk >= 0.3) return { label: "Seller: caution", color: C.red };
+  if (sr.shrunk || /limited|thin|few|new/i.test(sr.label)) return { label: "Seller: thin history", color: C.amber };
+  return { label: "Seller OK", color: C.green };
+}
+
+// One ranked edge row. Hero = net edge (after costs); then confidence + seller,
+// fair-value band, price/time, and the full identity line. Tap → "why this price".
+function DealRow({ a, onOpenCard }: { a: Alert; onOpenCard: (c: DetailCard) => void }) {
+  const auction = a.buyingOption === "AUCTION";
+  const conf = confChip(a.confidenceTier);
+  const sell = sellerChip(a.sellerRisk);
+  const tl = timeLeft(a.endTime);
+  return (
+    <Pressable style={styles.dealCard} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: a.title, listingUrl: a.deepLink })}>
+      <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={58} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.dealEdgeRow}>
+          <Text style={styles.dealEdgeVal}>+${money(a.netEdge)}</Text>
+          <Text style={styles.dealEdgePct}>+{Math.round(a.netEdgePct * 100)}%</Text>
+          <View style={{ flex: 1 }} />
+          <View style={[styles.dealChip, { borderColor: conf.color + "66" }]}>
+            <Text style={[styles.dealChipText, { color: conf.color }]}>{conf.label}</Text>
+          </View>
+        </View>
+        <Text style={styles.dealBand} numberOfLines={1}>
+          value ${money(a.fairValue.lower)}–${money(a.fairValue.upper)} · sells {a.liquidityTag}
+        </Text>
+        <Text style={styles.dealPriceLine} numberOfLines={1}>
+          {auction
+            ? `bid $${money(a.currentPrice)}${a.bidCount ? ` · ${a.bidCount} bids` : ""}${tl ? ` · ${tl} left` : ""} → est close $${money(a.predictedClose)}`
+            : `$${money(a.currentPrice)} · Buy It Now`}
+        </Text>
+        <Text style={styles.dealIdentity} numberOfLines={2}>
+          {a.title}
+        </Text>
+        <View style={[styles.dealChip, styles.dealSellerChip, { borderColor: sell.color + "66" }]}>
+          <Text style={[styles.dealChipText, { color: sell.color }]}>{sell.label}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function AlertsFeed({ alerts, speculative, watching, columns, pro, onOpenCard, loading }: { alerts: Alert[]; speculative: Alert[]; watching: WatchedCard[]; columns: number; pro: boolean; onOpenCard: (c: DetailCard) => void; loading: boolean }) {
+  void pro;
   return (
     <View>
       <View style={styles.feedHead}>
         <Text style={styles.colH}>Deals</Text>
-        {alerts.length > 0 ? <Text style={styles.feedMeta}>{alerts.length} under market value</Text> : null}
+        {alerts.length > 0 ? <Text style={styles.feedMeta}>{alerts.length} · ranked by net edge</Text> : null}
       </View>
-      {/* No deals → a clean state, NEVER fake cards. The watched-cards list below
-          keeps the screen useful even when nothing is underpriced right now. */}
+      {/* Confident deals only here — net edge > 0 after costs AND confidence gate.
+          Thin/low-confidence go to "Speculative" below; never mixed in. */}
       {alerts.length === 0 ? (
         <View style={styles.emptyBox}>
           {loading ? <ActivityIndicator color={C.accent} /> : null}
           <Text style={styles.emptyText}>
-            {loading ? "Finding cards priced under market value…" : watching.length ? "No standout deals this minute — here's where your cards sit vs. market value." : "No deals yet. Add cards to your wishlist to start tracking them."}
+            {loading
+              ? "Finding cards priced under market value…"
+              : speculative.length || watching.length
+                ? "No confident deals right now — see speculative picks and your tracked cards below."
+                : "No deals yet. Add cards to your wishlist to start tracking them."}
           </Text>
         </View>
       ) : (
         <Grid columns={columns}>
-          {alerts.map((a) => {
-          const vm = alertVM(a);
-          const price = Number(vm.predictedClose.replace(/[^0-9.]/g, ""));
-          const fv = a.fairValue.point;
-          const under = fv > 0 && price > 0 ? Math.round((1 - price / fv) * 100) : 0;
-          return (
-            <Pressable key={a.itemId} style={styles.itemCard} onPress={() => onOpenCard({ key: a.key, imageUrl: a.imageUrl, name: vm.title, listingUrl: vm.deepLink })}>
-              <CardImage uri={a.imageUrl} label={`${a.key.grader} ${a.key.grade}`} size={46} />
-              <View style={styles.cardBody}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {vm.title}
-                </Text>
-                <Text style={styles.cardSub} numberOfLines={1}>
-                  {a.key.grader} {a.key.grade}
-                  {a.key.variant ? ` · ${a.key.variant}` : ""} · {a.buyingOption === "AUCTION" ? "Auction" : "Buy It Now"}
-                </Text>
-                <View style={styles.cardPriceRow}>
-                  <Text style={styles.cardPrice}>${Math.round(price).toLocaleString()}</Text>
-                  {under > 0 ? (
-                    <View style={styles.underPill}>
-                      <Text style={styles.underPillText}>{under}% under value</Text>
-                    </View>
-                  ) : null}
-                </View>
-                {pro ? (
-                  <Text style={styles.cardProMeta} numberOfLines={1}>
-                    value {money(fv)} · {sureness(a.fairValue.confidence).label.toLowerCase()} confidence · {a.fairValue.compCount} comps
-                  </Text>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        })}
+          {alerts.map((a) => (
+            <DealRow key={a.itemId} a={a} onOpenCard={onOpenCard} />
+          ))}
         </Grid>
       )}
+
+      {speculative.length > 0 ? (
+        <>
+          <Text style={[styles.colH, { marginTop: 22 }]}>Speculative · thin data</Text>
+          <Text style={styles.specNote}>Real positive edge, but few or older sales — verify before buying.</Text>
+          <Grid columns={columns}>
+            {speculative.map((a) => (
+              <DealRow key={a.itemId} a={a} onOpenCard={onOpenCard} />
+            ))}
+          </Grid>
+        </>
+      ) : null}
 
       {watching.length > 0 ? (
         <>
@@ -1230,7 +1279,13 @@ function CardDetailModal({
             </View>
           ) : null}
 
-          <Text style={cd.section}>Recent sold</Text>
+          <Text style={cd.section}>Why this value — recent sold</Text>
+          {comps.length > 0 ? (
+            <Text style={cd.whyLine}>
+              Built from {comps.length} sale{comps.length === 1 ? "" : "s"}
+              {comps.length > 1 ? ` · ${comps[comps.length - 1].soldAt.slice(0, 10)} → ${comps[0].soldAt.slice(0, 10)}` : ""} (lots, autos, wrong parallels excluded)
+            </Text>
+          ) : null}
           {comps.length === 0 ? (
             <Text style={cd.empty}>{loading ? "Loading sold comps…" : "No sold-price data for this exact card yet — tap “See sold on eBay” below to check."}</Text>
           ) : (
@@ -1307,6 +1362,7 @@ const cd = StyleSheet.create({
   spark: { flexDirection: "row", alignItems: "flex-end", gap: 3, height: 40, marginTop: 14, marginBottom: 6 },
   sparkBar: { flex: 1, backgroundColor: C.green, borderRadius: 1, minHeight: 4, opacity: 0.85 },
   section: { color: C.muted, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", marginTop: 16, marginBottom: 8 },
+  whyLine: { color: C.muted, fontSize: 11, marginTop: -4, marginBottom: 8, lineHeight: 15 },
   empty: { color: C.muted, fontSize: 12, fontFamily: MONO },
   compRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 5, borderTopWidth: 1, borderTopColor: C.line },
   compDate: { color: C.muted, fontFamily: MONO, fontSize: 11, width: 64 },
@@ -1709,6 +1765,18 @@ const styles = StyleSheet.create({
   underPill: { backgroundColor: "#e7f5ec", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 },
   underPillText: { color: C.green, fontSize: 11, fontWeight: "600" },
   cardProMeta: { color: C.muted, fontSize: 10, fontFamily: MONO, marginTop: 4 },
+  // Ranked edge row — hero is the net edge.
+  dealCard: { flexDirection: "row", alignItems: "flex-start", gap: 11, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 10, marginBottom: 8 },
+  dealEdgeRow: { flexDirection: "row", alignItems: "baseline", gap: 6 },
+  dealEdgeVal: { color: C.green, fontSize: 19, fontWeight: "700", fontFamily: MONO },
+  dealEdgePct: { color: C.green, fontSize: 13, fontWeight: "600", fontFamily: MONO },
+  dealChip: { borderWidth: 1, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 1 },
+  dealChipText: { fontSize: 10, fontWeight: "600" },
+  dealSellerChip: { alignSelf: "flex-start", marginTop: 5 },
+  dealBand: { color: C.muted, fontSize: 12, marginTop: 4, fontFamily: MONO },
+  dealPriceLine: { color: C.ink, fontSize: 12, marginTop: 3 },
+  dealIdentity: { color: C.muted, fontSize: 11, marginTop: 3, lineHeight: 15 },
+  specNote: { color: C.muted, fontSize: 11, marginBottom: 8, marginTop: -4 },
   clearBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   clearBtnText: { color: C.red, fontSize: 12, fontWeight: "600" },
   emptyBox: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 14 },

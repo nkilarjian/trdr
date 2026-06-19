@@ -40,6 +40,18 @@ export interface ModelConfig {
     confidenceGate: number;
   };
 
+  /** Itemized costs for the NET realizable edge shown to the user. */
+  costs: {
+    /** Marketplace final-value fee on resale, fraction of sale price. */
+    marketplaceFeePct: number;
+    /** Flat shipping the buyer pays to acquire (USD). */
+    shippingFlat: number;
+    /** Estimated buyer sales tax, fraction of price. */
+    salesTaxPct: number;
+    /** Optional resale haircut beyond fees (fraction of sale price). */
+    resaleSpreadPct: number;
+  };
+
   closeForecast: {
     /** Multipliers applied to current bid by remaining-time tier. */
     timeTierMultiplier: { gt24h: number; h6to24: number; h1to6: number; lt1h: number };
@@ -80,6 +92,12 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
     transactionCostPct: 0.15, // eBay + payment + shipping, round-trip-ish
     marginPct: 0.05, // edge required beyond costs (was 0.08 — too few deals ever fired)
     confidenceGate: 0.55, // many real cards sit at 0.5–0.65 confidence; 0.7 gated them all out
+  },
+  costs: {
+    marketplaceFeePct: 0.1325, // eBay final value fee (~13.25% for cards)
+    shippingFlat: 5, // typical PWE/BMWT shipping the buyer pays
+    salesTaxPct: 0.08, // rough buyer sales tax
+    resaleSpreadPct: 0, // no extra haircut by default
   },
   closeForecast: {
     timeTierMultiplier: { gt24h: 2.1, h6to24: 1.55, h1to6: 1.2, lt1h: 1.05 },

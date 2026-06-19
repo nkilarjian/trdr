@@ -68,24 +68,84 @@ export interface BuildAlertInput {
   nowMs?: number;
 }
 
-/** Build an Alert if the gate fires, else null (suppressed). */
-export function buildAlert(input: BuildAlertInput): Alert | null {
-  const config = input.config ?? DEFAULT_MODEL_CONFIG;
-  const decision = evaluateSignal(input.listing, input.fairValue, config, input.nowMs ?? Date.now());
-  if (!decision.fire) return null;
+/** Itemized acquisition + resale costs feeding the NET realizable edge. */
+function costsFor(acquire: number, sellAt: number, config: ModelConfig) {
+  const fees = sellAt * (config.costs.marketplaceFeePct + config.costs.resaleSpreadPct);
+  const shipping = config.costs.shippingFlat;
+  const tax = acquire * config.costs.salesTaxPct;
+  return { acquire, fees, shipping, tax, total: fees + shipping + tax };
+}
 
-  return {
-    itemId: input.listing.itemId,
+/** Human-facing confidence bucket from comp depth + the model's confidence. */
+export function confidenceTier(fv: FairValue, config: ModelConfig = DEFAULT_MODEL_CONFIG): "high" | "med" | "low" {
+  if (fv.confidence >= 0.7 && fv.compCount >= config.estimator.minCompsForTrust) return "high";
+  if (fv.confidence >= config.signal.confidenceGate && fv.compCount >= 4) return "med";
+  return "low";
+}
+
+/** Can you exit? Maps sales velocity to a plain liquidity tag. */
+export function liquidityTag(fv: FairValue): "often" | "occasionally" | "rarely" {
+  if (fv.liquidity >= 0.5) return "often";
+  if (fv.liquidity >= 0.1) return "occasionally";
+  return "rarely";
+}
+
+export interface Assessment {
+  alert: Alert;
+  tier: "deal" | "speculative";
+}
+
+/**
+ * Assess a live listing into a ranked, classified edge alert, or null when it
+ * can't be valued (too few comps) or isn't underpriced after REAL costs.
+ * - tier "deal": confident enough to trust (confidence gate + comp depth).
+ * - tier "speculative": real positive edge but thin/low-confidence data.
+ * Edge is computed off the predicted CLOSE (auctions rise) and the fair-value
+ * LOWER bound (so the band's own uncertainty is already priced in).
+ */
+export function assessListing(input: BuildAlertInput): Assessment | null {
+  const config = input.config ?? DEFAULT_MODEL_CONFIG;
+  const now = input.nowMs ?? Date.now();
+  const { listing, fairValue: fv } = input;
+
+  if (fv.compCount < 3) return null; // not enough sales to value confidently — suppress
+
+  const predictedClose = forecastClose(listing, config, now);
+  const c = costsFor(predictedClose, fv.lower, config);
+  const netEdge = fv.lower - predictedClose - c.total;
+  if (netEdge <= 0) return null; // not underpriced once costs are paid
+
+  const tier: "deal" | "speculative" =
+    fv.confidence >= config.signal.confidenceGate && fv.compCount >= config.estimator.minCompsForTrust ? "deal" : "speculative";
+
+  const margin = fv.point * config.signal.marginPct;
+  const alert: Alert = {
+    itemId: listing.itemId,
     key: input.key,
-    fairValue: input.fairValue,
-    predictedClose: decision.predictedClose,
-    expectedEdge: decision.expectedEdge,
+    title: listing.title,
+    fairValue: fv,
+    predictedClose,
+    currentPrice: listing.currentPrice,
+    bidCount: listing.bidCount,
+    expectedEdge: fv.lower - predictedClose - predictedClose * config.signal.transactionCostPct - margin,
+    netEdge,
+    netEdgePct: predictedClose > 0 ? netEdge / predictedClose : 0,
+    costs: { acquire: predictedClose, fees: c.fees, shipping: c.shipping, tax: c.tax },
+    confidenceTier: confidenceTier(fv, config),
+    liquidityTag: liquidityTag(fv),
     sellerRisk: input.sellerRisk,
-    buyingOption: input.listing.buyingOption,
-    endTime: input.listing.endTime,
-    imageUrl: input.listing.slabPhotoUrls[0],
-    deepLink: ebayDeepLink(input.listing.itemId, input.epnCampaignId, input.listing.title),
+    buyingOption: listing.buyingOption,
+    endTime: listing.endTime,
+    imageUrl: listing.slabPhotoUrls[0],
+    deepLink: ebayDeepLink(listing.itemId, input.epnCampaignId, listing.title),
   };
+  return { alert, tier };
+}
+
+/** Back-compat: an Alert only when it's a confident DEAL, else null (suppressed). */
+export function buildAlert(input: BuildAlertInput): Alert | null {
+  const a = assessListing(input);
+  return a && a.tier === "deal" ? a.alert : null;
 }
 
 /**

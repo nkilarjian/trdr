@@ -4,7 +4,7 @@
 // and the offline snapshot never drift.
 
 import {
-  buildAlert,
+  assessListing,
   computeFairValue,
   looksManipulated,
   scoreSeller,
@@ -86,20 +86,21 @@ export async function valueCard(providers: Providers, key: CanonicalCardKey, opt
 // not a real steal — so don't surface it as a deal.
 const DEAL_PRICE_FLOOR = 0.4; // drop listings priced under 40% of fair value
 
-export function alertsFrom(v: CardValuation, opts: { epnCampaignId?: string; nowMs?: number }): Alert[] {
-  const out: Alert[] = [];
+export function alertsFrom(v: CardValuation, opts: { epnCampaignId?: string; nowMs?: number }): { deals: Alert[]; speculative: Alert[] } {
+  const deals: Alert[] = [];
+  const speculative: Alert[] = [];
   const fv = v.fairValue.point;
   for (const listing of v.listings) {
     // The listing title must actually describe this card's parallel (e.g. a
     // "Silver" key shouldn't match a base Prizm listing) — the #1 false positive.
     if (!listingMatchesKey(listing, v.key)) continue;
     const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
-    const a = buildAlert({ listing, key: v.key, fairValue: v.fairValue, sellerRisk, epnCampaignId: opts.epnCampaignId, nowMs: opts.nowMs });
+    const a = assessListing({ listing, key: v.key, fairValue: v.fairValue, sellerRisk, epnCampaignId: opts.epnCampaignId, nowMs: opts.nowMs });
     if (!a) continue;
-    if (fv > 0 && v.fairValue.compCount >= 5 && a.predictedClose < DEAL_PRICE_FLOOR * fv) continue; // too good to be real
-    out.push(a);
+    if (fv > 0 && v.fairValue.compCount >= 5 && a.alert.predictedClose < DEAL_PRICE_FLOOR * fv) continue; // too good to be real
+    (a.tier === "deal" ? deals : speculative).push(a.alert);
   }
-  return out;
+  return { deals, speculative };
 }
 
 /** Lowest current ask among listings that genuinely match this card — applies
@@ -150,7 +151,7 @@ export async function buildFeed(providers: Providers, params: FeedParams): Promi
   });
   return {
     generatedAt: new Date(nowMs).toISOString(),
-    alerts: alertsFrom(v, { epnCampaignId: params.epnCampaignId, nowMs }),
+    alerts: alertsFrom(v, { epnCampaignId: params.epnCampaignId, nowMs }).deals,
     passport: passportFrom(v, resolution.cert ?? null),
   };
 }

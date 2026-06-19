@@ -24,7 +24,8 @@ export interface WatchedCard {
 
 export interface Board {
   generatedAt: string;
-  alerts: Alert[];
+  alerts: Alert[]; // confident deals, ranked by net edge after costs
+  speculative: Alert[]; // real positive edge but thin/low-confidence — shown separately
   watching: WatchedCard[];
   wishlist: WishlistResult;
   passport: PassportView | null;
@@ -55,6 +56,7 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
   ]);
 
   const alerts: Alert[] = [];
+  const speculative: Alert[] = [];
   const watching: WatchedCard[] = [];
   const seen = new Set<string>();
   const watchedSeen = new Set<string>();
@@ -72,15 +74,17 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
       watching.push({ key, fairValue: v.fairValue, imageUrl: v.imageUrl, lowestAsk: lowestLegitAsk(v) });
     }
 
-    for (const a of alertsFrom(v, { epnCampaignId: opts.epnCampaignId, nowMs })) {
-      if (!seen.has(a.itemId)) {
-        seen.add(a.itemId);
-        alerts.push(a);
-      }
-    }
+    const { deals, speculative: spec } = alertsFrom(v, { epnCampaignId: opts.epnCampaignId, nowMs });
+    for (const a of deals) if (!seen.has(a.itemId)) (seen.add(a.itemId), alerts.push(a));
+    for (const a of spec) if (!seen.has(a.itemId)) (seen.add(a.itemId), speculative.push(a));
   }
 
-  return { generatedAt: new Date(nowMs).toISOString(), alerts, watching, wishlist, passport };
+  // Rank by net realizable edge after costs, descending — the hero number.
+  const byEdge = (x: Alert, y: Alert) => y.netEdge - x.netEdge;
+  alerts.sort(byEdge);
+  speculative.sort(byEdge);
+
+  return { generatedAt: new Date(nowMs).toISOString(), alerts, speculative, watching, wishlist, passport };
 }
 
 /** Card keys to accumulate sold data for, derived from the watched wishlist. */
