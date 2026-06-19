@@ -27,13 +27,14 @@ export async function huntDeals(
   const nowMs = opts.nowMs ?? Date.now();
   const window = { fromIso: new Date(nowMs - (opts.windowDays ?? 180) * DAY).toISOString(), toIso: new Date(nowMs).toISOString() };
 
-  // Broad search per wish (player/category/set), concurrently.
+  // BROAD search per wish — player/category (+ grader to skip raw), NO specific
+  // card key (that would just re-find the pinned card). keyFromTitle then resolves
+  // each listing to whatever card it actually is.
+  const queries = new Set(
+    specs.map((s) => [s.subject ?? s.category ?? "graded", s.grader].filter(Boolean).join(" ").trim()).filter((q) => q.length > 1),
+  );
   const lists = await Promise.all(
-    specs.map((s) =>
-      providers.market
-        .searchActive({ keywords: s.subject ?? s.category, key: { set: s.set, number: s.number, variant: s.variant, grader: s.grader as Grader, grade: s.minGrade } })
-        .catch(() => [] as ActiveListing[]),
-    ),
+    [...queries].map((keywords) => providers.market.searchActive({ keywords, limit: 100 }).catch(() => [] as ActiveListing[])),
   );
 
   // Resolve each listing to a card and group listings by card.
