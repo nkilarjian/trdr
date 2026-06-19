@@ -3,10 +3,81 @@
 // across the resolvable cards), the wishlist tree + "worth checking out" hits,
 // and a passport for the first valued card.
 
-import type { Alert, CanonicalCardKey, FairValue, Grader, WishSpec } from "@trdr/core";
-import { alertsFrom, lowestLegitAsk, passportFrom, valueCard, type PassportView } from "./feed.js";
+import { assessListing, computeFairValue, scoreSeller, type ActiveListing, type Alert, type CanonicalCardKey, type FairValue, type Grader, type WishSpec } from "@trdr/core";
+import { lowestLegitAsk, passportFrom, valueCard, type PassportView } from "./feed.js";
+import { keyFromTitle } from "./title.js";
 import { scanWishlist, type WishlistResult } from "./wishlist.js";
 import type { Providers } from "./providers.js";
+
+const DAY = 86_400_000;
+const HUNT_CARD_CAP = 30; // distinct cards to value per scan (bounds comp lookups)
+
+/**
+ * Hunt the broader market in the user's categories: search each wish (player /
+ * category / set), RESOLVE every listing it finds into a card from its title,
+ * then value those distinct cards and assess each listing. So deals come from the
+ * whole market a user cares about — not only the exact cards they pinned. The
+ * trust gates (comp matching, confidence, suppression) still decide what's shown.
+ */
+export async function huntDeals(
+  providers: Providers,
+  specs: WishSpec[],
+  opts: BoardOpts = {},
+): Promise<{ deals: Alert[]; speculative: Alert[] }> {
+  const nowMs = opts.nowMs ?? Date.now();
+  const window = { fromIso: new Date(nowMs - (opts.windowDays ?? 180) * DAY).toISOString(), toIso: new Date(nowMs).toISOString() };
+
+  // Broad search per wish (player/category/set), concurrently.
+  const lists = await Promise.all(
+    specs.map((s) =>
+      providers.market
+        .searchActive({ keywords: s.subject ?? s.category, key: { set: s.set, number: s.number, variant: s.variant, grader: s.grader as Grader, grade: s.minGrade } })
+        .catch(() => [] as ActiveListing[]),
+    ),
+  );
+
+  // Resolve each listing to a card and group listings by card.
+  const byCard = new Map<string, { key: CanonicalCardKey; listings: ActiveListing[] }>();
+  for (const listing of lists.flat()) {
+    const r = keyFromTitle(listing.title);
+    if (!r) continue;
+    const k = r.key;
+    const sig = `${k.set}|${k.number}|${k.variant ?? ""}|${k.grader}|${k.grade}`;
+    const g = byCard.get(sig) ?? { key: k, listings: [] };
+    g.listings.push(listing);
+    byCard.set(sig, g);
+  }
+
+  // Value the most-listed cards (more listings → more likely a real deal), capped.
+  const cards = [...byCard.values()].sort((a, b) => b.listings.length - a.listings.length).slice(0, HUNT_CARD_CAP);
+  const results = await Promise.all(
+    cards.map(async ({ key, listings }) => {
+      const comps = await providers.market.getSoldComps(key, window).catch(() => []);
+      if (comps.length < 3) return null; // not enough sales to value confidently
+      const fv = computeFairValue({ comps, now: nowMs });
+      const d: Alert[] = [];
+      const s: Alert[] = [];
+      for (const listing of listings) {
+        const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
+        const a = assessListing({ listing, key, fairValue: fv, sellerRisk, epnCampaignId: opts.epnCampaignId, nowMs });
+        if (!a) continue;
+        if (fv.point > 0 && fv.compCount >= 5 && a.alert.predictedClose < 0.4 * fv.point) continue; // too good to be real → likely a mis-resolve
+        (a.tier === "deal" ? d : s).push(a.alert);
+      }
+      return { d, s };
+    }),
+  );
+
+  const deals: Alert[] = [];
+  const speculative: Alert[] = [];
+  const seen = new Set<string>();
+  for (const r of results) {
+    if (!r) continue;
+    for (const a of r.d) if (!seen.has(a.itemId)) (seen.add(a.itemId), deals.push(a));
+    for (const a of r.s) if (!seen.has(a.itemId)) (seen.add(a.itemId), speculative.push(a));
+  }
+  return { deals, speculative };
+}
 
 export interface BoardOpts {
   nowMs?: number;
@@ -43,8 +114,9 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
   const nowMs = opts.nowMs ?? Date.now();
   // Value every card and scan the wishlist concurrently — network latency is the
   // bulk of the board's time, and doing it card-by-card 502'd the gateway.
-  const [wishlist, valued] = await Promise.all([
+  const [wishlist, valued, hunt] = await Promise.all([
     scanWishlist(providers, specs, opts),
+    // The user's pinned cards, valued — for the Watching list + passport.
     Promise.all(
       specs.map(async (spec) => {
         const key = specToKey(spec);
@@ -53,12 +125,11 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
         return { key, v };
       }),
     ),
+    // Deals come from the BROAD market in the user's categories, not just pins.
+    huntDeals(providers, specs, opts),
   ]);
 
-  const alerts: Alert[] = [];
-  const speculative: Alert[] = [];
   const watching: WatchedCard[] = [];
-  const seen = new Set<string>();
   const watchedSeen = new Set<string>();
   let passport: PassportView | null = null;
 
@@ -73,16 +144,12 @@ export async function scanBoard(providers: Providers, specs: WishSpec[], opts: B
       watchedSeen.add(sig);
       watching.push({ key, fairValue: v.fairValue, imageUrl: v.imageUrl, lowestAsk: lowestLegitAsk(v) });
     }
-
-    const { deals, speculative: spec } = alertsFrom(v, { epnCampaignId: opts.epnCampaignId, nowMs });
-    for (const a of deals) if (!seen.has(a.itemId)) (seen.add(a.itemId), alerts.push(a));
-    for (const a of spec) if (!seen.has(a.itemId)) (seen.add(a.itemId), speculative.push(a));
   }
 
   // Rank by net realizable edge after costs, descending — the hero number.
   const byEdge = (x: Alert, y: Alert) => y.netEdge - x.netEdge;
-  alerts.sort(byEdge);
-  speculative.sort(byEdge);
+  const alerts = [...hunt.deals].sort(byEdge);
+  const speculative = [...hunt.speculative].sort(byEdge);
 
   return { generatedAt: new Date(nowMs).toISOString(), alerts, speculative, watching, wishlist, passport };
 }
