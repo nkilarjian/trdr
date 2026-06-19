@@ -111,12 +111,16 @@ export function assessListing(input: BuildAlertInput): Assessment | null {
   if (fv.compCount < 3) return null; // not enough sales to value confidently — suppress
 
   const predictedClose = forecastClose(listing, config, now);
-  const c = costsFor(predictedClose, fv.lower, config);
-  const netEdge = fv.lower - predictedClose - c.total;
+  const c = costsFor(predictedClose, fv.point, config);
+  // Displayed edge = net realizable vs MARKET value (point), so under-market finds
+  // surface. A confident DEAL additionally has to clear the conservative LOWER
+  // bound (so the band's own uncertainty is priced in); the rest is speculative.
+  const netEdge = fv.point - predictedClose - c.total;
   if (netEdge <= 0) return null; // not underpriced once costs are paid
 
+  const clearsLowerBand = fv.lower - predictedClose - c.total > 0;
   const tier: "deal" | "speculative" =
-    fv.confidence >= config.signal.confidenceGate && fv.compCount >= config.estimator.minCompsForTrust ? "deal" : "speculative";
+    clearsLowerBand && fv.confidence >= config.signal.confidenceGate && fv.compCount >= config.estimator.minCompsForTrust ? "deal" : "speculative";
 
   const margin = fv.point * config.signal.marginPct;
   const alert: Alert = {

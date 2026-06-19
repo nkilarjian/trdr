@@ -10,7 +10,7 @@ import { scanWishlist, type WishlistResult } from "./wishlist.js";
 import type { Providers } from "./providers.js";
 
 const DAY = 86_400_000;
-const HUNT_CARD_CAP = 30; // distinct cards to value per scan (bounds comp lookups)
+const HUNT_CARD_CAP = 18; // distinct cards to value per scan (bounds comp lookups + latency)
 
 /**
  * Hunt the broader market in the user's categories: search each wish (player /
