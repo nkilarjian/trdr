@@ -62,7 +62,10 @@ export async function huntDeals(
         const sellerRisk = scoreSeller(listing.seller, { sampleSize: listing.seller.feedbackScore, shillRate: 0.05 });
         const a = assessListing({ listing, key, fairValue: fv, sellerRisk, epnCampaignId: opts.epnCampaignId, nowMs });
         if (!a) continue;
-        if (fv.point > 0 && fv.compCount >= 5 && a.alert.predictedClose < 0.4 * fv.point) continue; // too good to be real → likely a mis-resolve
+        // A price under HALF the value is almost always a mis-resolve / wrong-grade /
+        // parallel-vs-base valuation error, not a real >100% steal — drop it so the
+        // broad hunt can't resurface the noise the trust gates were built to kill.
+        if (fv.point > 0 && a.alert.predictedClose < 0.5 * fv.point) continue;
         (a.tier === "deal" ? d : s).push(a.alert);
       }
       return { d, s };
