@@ -3,7 +3,7 @@
 // to the user's Clerk profile metadata (so they follow you across devices).
 // When the key is absent, everything below no-ops and the app runs as a guest.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { ClerkProvider, useAuth, useClerk, useSignIn, useSignUp, useSSO, useUser } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
@@ -243,14 +243,62 @@ export function CloudSync(props: {
 }
 
 function CloudSyncInner({ specs, holdings, onLoad }: { specs: unknown[]; holdings: unknown[]; onLoad: (d: { specs?: unknown[]; holdings?: unknown[] }) => void }) {
-  // DISABLED: writing the library/wishlist back to Clerk on every change was the
-  // only code that ran differently while signed in, and it was interfering with
-  // the app (couldn't add cards when logged in). Everything still persists
-  // on-device via AsyncStorage; sign-in just no longer syncs across devices.
-  // TODO: re-enable cross-device sync with a debounced, off-render write.
-  void specs;
-  void holdings;
-  void onLoad;
+  const { isSignedIn, getToken } = useAuth();
+  const hydrated = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const base = process.env.EXPO_PUBLIC_API_BASE;
+
+  // On sign-in, pull the account's saved library + wishlist ONCE and MERGE it in
+  // (onLoad unions by id — never replaces, so a freshly-added card survives).
+  useEffect(() => {
+    if (!isSignedIn || hydrated.current || !base) return;
+    let active = true;
+    void (async () => {
+      try {
+        const token = await getToken();
+        if (token && active) {
+          const r = await fetch(`${base}/api/v1/user/state`, { headers: { Authorization: `Bearer ${token}` } });
+          if (r.ok && active) {
+            const d = (await r.json()) as { library?: unknown[]; wishlist?: unknown[] };
+            onLoad({ specs: d.wishlist, holdings: d.library });
+          }
+        }
+      } catch {
+        /* offline / sync not configured → stay local-only */
+      }
+      hydrated.current = true; // only push AFTER the initial pull, never before
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn]);
+
+  // After hydration, push local changes to the account, debounced.
+  useEffect(() => {
+    if (!isSignedIn || !hydrated.current || !base) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const token = await getToken();
+          if (!token) return;
+          await fetch(`${base}/api/v1/user/state`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ wishlist: specs, library: holdings }),
+          });
+        } catch {
+          /* best-effort */
+        }
+      })();
+    }, 1500);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specs, holdings, isSignedIn]);
+
   return null;
 }
 

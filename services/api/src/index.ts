@@ -27,6 +27,7 @@ import {
 } from "@trdr/ingestion";
 import { computeFairValue } from "@trdr/core";
 import type { CanonicalCardKey, Grader, Holding, WishSpec } from "@trdr/core";
+import { getUserState, putUserState, syncConfigured, userIdFromAuth, type UserState } from "./userstate.js";
 
 // Load repo-root .env so credentials are picked up without exporting by hand
 // (Node 20.12+/22+ built-in). Must run before selectProviders reads process.env.
@@ -61,7 +62,21 @@ const capabilities = {
   vision: process.env.VISION_BACKEND === "claude" && process.env.ANTHROPIC_API_KEY ? "claude" : "mock",
   grading: process.env.PSA_API_TOKEN || process.env.CGC_API_TOKEN || process.env.SGC_API_TOKEN || process.env.BGS_API_TOKEN ? "real" : "mock",
 };
-app.get("/health", async () => ({ ok: true, build: "comp-key-filter", providers: capabilities }));
+app.get("/health", async () => ({ ok: true, build: "user-sync", providers: capabilities, sync: syncConfigured() }));
+
+// ── cross-device sync: the signed-in user's library + wishlist, in Postgres ──
+// Requires a valid Clerk session token (Authorization: Bearer …) and DATABASE_URL.
+app.get("/api/v1/user/state", async (req, reply) => {
+  const userId = await userIdFromAuth(req.headers.authorization);
+  if (!userId) return reply.code(401).send({ error: "unauthorized" });
+  return getUserState(userId);
+});
+app.put<{ Body: Partial<UserState> }>("/api/v1/user/state", async (req, reply) => {
+  const userId = await userIdFromAuth(req.headers.authorization);
+  if (!userId) return reply.code(401).send({ error: "unauthorized" });
+  await putUserState(userId, { library: req.body?.library ?? [], wishlist: req.body?.wishlist ?? [] });
+  return { ok: true };
+});
 
 // ── eBay Marketplace Account Deletion/Closure notifications ──
 // Required to activate eBay production keys. eBay first sends GET ?challenge_code
