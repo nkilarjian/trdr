@@ -42,9 +42,27 @@ export interface DetectedSlab {
   boundingBox?: BoundingBox;
 }
 
+/**
+ * A card identified off a photo for on-the-spot valuation / trade — GRADED or
+ * RAW. `name` is a single search-ready description (year + set + player + number
+ * + parallel, plus grader + grade only if it's in a graded slab). Raw cards omit
+ * the grade. Deliberately free-text (not CanonicalCardKey) so the trade flow can
+ * value graded cards and link raw ones to eBay-sold without the grade-required
+ * holding machinery.
+ */
+export interface IdentifiedCard {
+  name: string;
+  graded: boolean;
+  confidence: number; // [0,1]
+  cropUrl?: string;
+}
+
 export interface VisionProvider {
-  /** Detect and read as many slabs as possible from one image. */
+  /** Detect and read as many GRADED slabs as possible from one image (label read). */
   detectSlabs(image: ImageInput): Promise<DetectedSlab[]>;
+  /** Identify every card in a photo — graded slabs AND raw cards — by reading the
+   *  card front, returned as search-ready descriptions for the trade/value flow. */
+  identifyCards(image: ImageInput): Promise<IdentifiedCard[]>;
 }
 
 export { MockVisionProvider } from "./mock.js";

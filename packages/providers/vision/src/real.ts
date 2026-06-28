@@ -5,7 +5,7 @@
 // hosted model behind the same interface later.
 
 import type { Grader } from "@trdr/core";
-import type { DetectedSlab, ImageInput, VisionProvider } from "./index.js";
+import type { DetectedSlab, IdentifiedCard, ImageInput, VisionProvider } from "./index.js";
 
 export interface RealVisionConfig {
   /** "claude" (default) — or "apple-vision" | "mlkit" | a custom endpoint. */
@@ -32,6 +32,20 @@ const PROMPT = [
   "Include glare/blurred slabs too, with low confidence and whatever fields you can read. No prose, JSON only.",
 ].join("\n");
 
+// Identify EVERY card in a photo — graded slabs AND raw/ungraded cards — by reading
+// the card front, not just a slab label. Returns one search-ready name per card.
+const ID_PROMPT = [
+  "This photo shows one or more trading cards. They may be GRADED (in a PSA / CGC / SGC / BGS slab) and/or RAW (loose, ungraded cards).",
+  "Identify EVERY card you can see — graded and raw alike. Read what's actually printed/visible; do NOT infer or autocomplete from memory. If a detail is unclear, leave it out and lower your confidence rather than guessing.",
+  "For each card return:",
+  '- name: ONE search-ready description — year + brand/set + player/subject + card number (with #) + parallel/variant, exactly as visible, e.g. "2018 Panini Prizm Luka Doncic #280 Silver". If it is in a GRADED slab, append the grader and grade at the end, e.g. "… PSA 10". If it is RAW, do NOT append any grade.',
+  "- graded: true if the card is in a graded slab, false if it is raw/ungraded",
+  "- confidence: 0..1 — your honest certainty of the whole read",
+  "- boundingBox: {x,y,w,h} as fractions 0..1 of the image",
+  'Respond with ONLY a JSON array, e.g. [{"name":"2018 Panini Prizm Luka Doncic #280 Silver PSA 10","graded":true,"confidence":0.92,"boundingBox":{"x":0.1,"y":0.1,"w":0.2,"h":0.3}},{"name":"2021 Topps Chrome Wander Franco","graded":false,"confidence":0.6,"boundingBox":{"x":0.4,"y":0.1,"w":0.2,"h":0.3}}].',
+  "Include partially-visible or blurry cards too, with low confidence and whatever you can read. No prose, JSON only.",
+].join("\n");
+
 interface RawSlab {
   grader?: string;
   cert?: string;
@@ -43,10 +57,17 @@ interface RawSlab {
   boundingBox?: { x: number; y: number; w: number; h: number };
 }
 
+interface RawIdent {
+  name?: string;
+  graded?: boolean;
+  confidence?: number;
+}
+
 export class RealVisionProvider implements VisionProvider {
   constructor(readonly config: RealVisionConfig) {}
 
-  async detectSlabs(image: ImageInput): Promise<DetectedSlab[]> {
+  // Shared Anthropic vision call → returns the model's text answer.
+  private async callClaude(prompt: string, image: ImageInput): Promise<string> {
     const backend = (this.config.backend ?? "claude").toLowerCase();
     if (backend !== "claude") {
       // TODO(vision): on-device (Apple Vision / ML Kit) or a custom endpointUrl.
@@ -67,7 +88,7 @@ export class RealVisionProvider implements VisionProvider {
       body: JSON.stringify({
         // Identifying a card off a photo is error-prone OCR + reasoning, so default
         // to the most capable VISION model with adaptive thinking ON — it reasons
-        // about ambiguous/glared labels before answering instead of one-shotting,
+        // about ambiguous/glared cards before answering instead of one-shotting,
         // which cuts misidentifications. Slower + pricier than Haiku; override with
         // VISION_MODEL (e.g. claude-haiku-4-5-20251001) when speed matters more.
         model: this.config.model ?? "claude-opus-4-8",
@@ -82,16 +103,30 @@ export class RealVisionProvider implements VisionProvider {
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mediaType, data } },
-              { type: "text", text: PROMPT },
+              { type: "text", text: prompt },
             ],
           },
         ],
       }),
     });
     if (!res.ok) throw new Error(`Anthropic vision API ${res.status}: ${await res.text()}`);
-
     const body = (await res.json()) as { content?: { type: string; text?: string }[] };
-    const text = body.content?.find((b) => b.type === "text")?.text ?? "[]";
+    return body.content?.find((b) => b.type === "text")?.text ?? "[]";
+  }
+
+  async identifyCards(image: ImageInput): Promise<IdentifiedCard[]> {
+    const text = await this.callClaude(ID_PROMPT, image);
+    return parseJsonArray<RawIdent>(text)
+      .map((c) => ({
+        name: typeof c.name === "string" ? c.name.trim() : "",
+        graded: c.graded === true,
+        confidence: clamp01(typeof c.confidence === "number" ? c.confidence : 0.5),
+      }))
+      .filter((c) => c.name.length > 0 || c.confidence < 0.6); // keep low-confidence (even nameless) for the review path
+  }
+
+  async detectSlabs(image: ImageInput): Promise<DetectedSlab[]> {
+    const text = await this.callClaude(PROMPT, image);
     return parseSlabs(text).map((s, i) => ({
       id: `v${i}`,
       grader: normalizeGrader(s.grader),
@@ -116,16 +151,20 @@ function normalize(image: ImageInput): { data?: string; mediaType: string } {
   return { data, mediaType };
 }
 
-function parseSlabs(text: string): RawSlab[] {
+// Pull the first JSON array out of the model's text (it may wrap it in prose).
+function parseJsonArray<T>(text: string): T[] {
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
   if (start === -1 || end === -1 || end < start) return [];
   try {
     const arr = JSON.parse(text.slice(start, end + 1));
-    return Array.isArray(arr) ? (arr as RawSlab[]) : [];
+    return Array.isArray(arr) ? (arr as T[]) : [];
   } catch {
     return [];
   }
+}
+function parseSlabs(text: string): RawSlab[] {
+  return parseJsonArray<RawSlab>(text);
 }
 
 function toCard(s: RawSlab): { set?: string; number?: string; variant?: string; grade?: number } | undefined {

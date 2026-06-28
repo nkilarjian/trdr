@@ -899,7 +899,8 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
     setScanMsg(null);
     setBusy(true);
     const market = await valueOf(q);
-    setLines((p) => [...p, { id: `m-${Date.now()}-${p.length}`, name: q, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: market == null, valuedFor: q }]);
+    // User typed it → confirmed; never flag as needs-review (raw cards just have no auto-value).
+    setLines((p) => [...p, { id: `m-${Date.now()}-${p.length}`, name: q, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: false, valuedFor: q }]);
     setBusy(false);
   };
 
@@ -913,36 +914,35 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
     setBusy(true);
     setScanMsg("Reading your photo… this can take a few seconds.");
     try {
-      const r = await fetch(`${API_BASE}/api/v1/library/scan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: { base64: img.base64, mediaType: img.mediaType } }) });
+      // /identify reads the card FRONT — graded slabs AND raw cards — as names.
+      const r = await fetch(`${API_BASE}/api/v1/identify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: { base64: img.base64, mediaType: img.mediaType } }) });
       if (!r.ok) {
         setScanMsg("Couldn't read that photo (scanner error). Try again, or type the card above.");
       } else {
-        const s = (await r.json()) as Scan;
-        // Confident reads → value each on the same grounded path as a type-in.
-        const confident = await Promise.all(
-          (s.valued ?? []).map(async (v, i): Promise<TradeLine> => {
-            const name = nameOfKey(v.holding.key);
-            const market = await valueOf(name);
-            return { id: `s-${Date.now()}-${i}`, name, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(name), needsReview: market == null, valuedFor: name };
+        const { cards } = (await r.json()) as { cards?: { name?: string; graded?: boolean; confidence?: number }[] };
+        const newLines = await Promise.all(
+          (cards ?? []).map(async (c, i): Promise<TradeLine> => {
+            const name = (c.name ?? "").trim();
+            const lowConf = (c.confidence ?? 0) < 0.6;
+            const needsReview = lowConf || !name; // scanner unsure → confirm
+            // Auto-value confident GRADED reads; raw cards have no auto-value (eBay link instead).
+            const market = !needsReview && c.graded ? await valueOf(name) : null;
+            return {
+              id: `id-${Date.now()}-${i}`,
+              name,
+              market,
+              value: market != null ? String(Math.round(market)) : "",
+              ebay: name ? ebaySoldSearch(name) : "",
+              needsReview,
+              valuedFor: needsReview ? undefined : name,
+            };
           }),
         );
-        // Uncertain reads → ask the user to confirm what the card is.
-        const unsure: TradeLine[] = (s.review ?? []).map((rv, i) => ({
-          id: `r-${Date.now()}-${i}`,
-          name: "",
-          market: null,
-          value: "",
-          ebay: "",
-          needsReview: true,
-          cropUrl: rv.detection.cropUrl,
-        }));
-        if (confident.length || unsure.length) {
-          setLines((p) => [...p, ...confident, ...unsure]);
+        if (newLines.length) {
+          setLines((p) => [...p, ...newLines]);
           setScanMsg(null);
         } else {
-          // Found nothing — say so instead of silently doing nothing. The reader
-          // only knows GRADED slabs today; raw cards must be typed.
-          setScanMsg("No graded slabs found in that photo. Raw (ungraded) cards can't be auto-read yet — type the card name above. For slabs, try a clearer, straight-on shot.");
+          setScanMsg("No cards found in that photo — try a clearer, straight-on shot, or type the card above.");
         }
       }
     } catch {
@@ -958,7 +958,9 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
     const q = (li0?.name ?? "").trim();
     if (!q || li0?.valuedFor === q) return; // unchanged → don't re-look-up / clobber a manual value
     const market = await valueOf(q);
-    setLines((p) => p.map((li) => (li.id === id ? { ...li, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: market == null, valuedFor: q } : li)));
+    // The user provided/edited the name → it's confirmed; clear the review flag.
+    // (market may be null for a raw card — that's fine, the eBay-sold link covers it.)
+    setLines((p) => p.map((li) => (li.id === id ? { ...li, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: false, valuedFor: q } : li)));
   };
   const setName = (id: string, v: string) => setLines((p) => p.map((li) => (li.id === id ? { ...li, name: v } : li)));
   const setValue = (id: string, v: string) => setLines((p) => p.map((li) => (li.id === id ? { ...li, value: v.replace(/[^0-9.]/g, "") } : li)));

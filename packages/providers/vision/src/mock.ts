@@ -3,7 +3,7 @@
 // glare/blur/partial and come back low-confidence for the user to confirm.
 // The cert numbers resolve via the mock GradingProvider so a real library forms.
 
-import type { DetectedSlab, ImageInput, VisionProvider } from "./index.js";
+import type { DetectedSlab, IdentifiedCard, ImageInput, VisionProvider } from "./index.js";
 
 const DETECTIONS: DetectedSlab[] = [
   { id: "d1", grader: "PSA", certGuess: "58127634", confidence: 0.97, cropUrl: "https://img.test/crop1.jpg", boundingBox: { x: 0.04, y: 0.05, w: 0.28, h: 0.42 } },
@@ -22,5 +22,13 @@ const DETECTIONS: DetectedSlab[] = [
 export class MockVisionProvider implements VisionProvider {
   async detectSlabs(_image: ImageInput): Promise<DetectedSlab[]> {
     return DETECTIONS;
+  }
+  async identifyCards(_image: ImageInput): Promise<IdentifiedCard[]> {
+    // A graded read, a raw read, and a low-confidence one for the review path.
+    return [
+      { name: "2018 Panini Prizm Luka Doncic Silver PSA 10", graded: true, confidence: 0.95 },
+      { name: "2021 Topps Chrome Wander Franco", graded: false, confidence: 0.66 },
+      { name: "Michael Jordan Fleer", graded: false, confidence: 0.41 },
+    ];
   }
 }

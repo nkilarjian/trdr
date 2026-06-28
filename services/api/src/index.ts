@@ -182,6 +182,20 @@ app.post<{ Body: { image?: { uri?: string; base64?: string; mediaType?: string }
   return { ...result, valued };
 });
 
+// Identify every card in a photo — graded slabs AND raw cards — as search-ready
+// names for the on-the-spot trade/value flow (no cert lookup / valuation here).
+app.post<{ Body: { image?: { uri?: string; base64?: string; mediaType?: string } } }>("/api/v1/identify", async (req, reply) => {
+  const image = req.body?.image;
+  if (!image?.base64) return reply.code(400).send({ error: "image base64 required" });
+  try {
+    const cards = await providers.vision.identifyCards(image);
+    return { cards };
+  } catch (e) {
+    req.log.error(e);
+    return reply.code(502).send({ error: e instanceof Error ? e.message : "vision failed" });
+  }
+});
+
 // TODO(Phase 1): POST /auth, eBay OAuth handoff (encrypt tokens at rest),
 //   /portfolio, /watchlists (persist user wishlist), /devices (push registration).
 
