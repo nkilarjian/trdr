@@ -410,7 +410,7 @@ export default function App() {
 
   const tabs: { key: typeof tab; label: string; icon: IconName }[] = [
     { key: "alerts", label: `Deals · ${alerts.length}`, icon: "pricetags-outline" },
-    { key: "value", label: "Value", icon: "search-outline" },
+    { key: "value", label: "Trade", icon: "swap-horizontal-outline" },
     { key: "library", label: `Library · ${holdings.length}`, icon: "albums-outline" },
     { key: "wishlist", label: `Wishlist · ${hits.length}`, icon: "heart-outline" },
     { key: "scan", label: "Scan", icon: "scan-outline" },
@@ -870,6 +870,7 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
   const [buying, setBuying] = useState<TradeLine[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [scanMsg, setScanMsg] = useState<string | null>(null);
 
   const lines = side === "selling" ? selling : buying;
   const setLines = side === "selling" ? setSelling : setBuying;
@@ -895,6 +896,7 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
     const q = text.trim();
     if (!q) return;
     setText("");
+    setScanMsg(null);
     setBusy(true);
     const market = await valueOf(q);
     setLines((p) => [...p, { id: `m-${Date.now()}-${p.length}`, name: q, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: market == null, valuedFor: q }]);
@@ -902,13 +904,19 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
   };
 
   const snap = async () => {
-    if (!API_BASE) return;
+    if (!API_BASE) {
+      setScanMsg("Scanner isn't reachable right now — type the card above instead.");
+      return;
+    }
     const img = await pickImageWeb();
-    if (!img) return;
+    if (!img) return; // user cancelled the picker
     setBusy(true);
+    setScanMsg("Reading your photo… this can take a few seconds.");
     try {
       const r = await fetch(`${API_BASE}/api/v1/library/scan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: { base64: img.base64, mediaType: img.mediaType } }) });
-      if (r.ok) {
+      if (!r.ok) {
+        setScanMsg("Couldn't read that photo (scanner error). Try again, or type the card above.");
+      } else {
         const s = (await r.json()) as Scan;
         // Confident reads → value each on the same grounded path as a type-in.
         const confident = await Promise.all(
@@ -928,10 +936,17 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
           needsReview: true,
           cropUrl: rv.detection.cropUrl,
         }));
-        setLines((p) => [...p, ...confident, ...unsure]);
+        if (confident.length || unsure.length) {
+          setLines((p) => [...p, ...confident, ...unsure]);
+          setScanMsg(null);
+        } else {
+          // Found nothing — say so instead of silently doing nothing. The reader
+          // only knows GRADED slabs today; raw cards must be typed.
+          setScanMsg("No graded slabs found in that photo. Raw (ungraded) cards can't be auto-read yet — type the card name above. For slabs, try a clearer, straight-on shot.");
+        }
       }
     } catch {
-      /* scan unavailable */
+      setScanMsg("Couldn't reach the scanner — check your connection, or type the card above.");
     }
     setBusy(false);
   };
@@ -989,7 +1004,14 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
           <Text style={styles.scanBtnAltText}>Snap cards you're {side}</Text>
         </Pressable>
       ) : null}
-      {busy ? <ActivityIndicator color={C.accent} style={{ marginTop: 12 }} /> : null}
+      {busy ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
+          <ActivityIndicator color={C.accent} />
+          {scanMsg ? <Text style={[styles.hint, { flex: 1 }]}>{scanMsg}</Text> : null}
+        </View>
+      ) : scanMsg ? (
+        <Text style={[styles.qvHint, { marginTop: 12 }]}>{scanMsg}</Text>
+      ) : null}
 
       {reviewCount > 0 ? (
         <Text style={tv.reviewBanner}>
