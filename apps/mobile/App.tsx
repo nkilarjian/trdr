@@ -836,30 +836,47 @@ function DealRow({ a, onOpenCard }: { a: Alert; onOpenCard: (c: DetailCard) => v
 // On-the-spot card valuation: type any card (graded OR raw) → our value band +
 // recent sales for graded, and always a one-tap link to real eBay sold prices
 // (the reliable universal path — works for raw too). Built for deciding fast.
-type TradeLine = { id: string; name: string; market: number | null; price: string; ebay: string };
+type TradeLine = { id: string; name: string; market: number | null; value: string; ebay: string; needsReview?: boolean; cropUrl?: string; valuedFor?: string };
 
 function ebaySoldSearch(q: string): string {
   const clean = q.replace(/\b(raw|ungraded)\b/gi, "").replace(/#/g, "").replace(/\s+/g, " ").trim();
   return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(clean)}&LH_Sold=1&LH_Complete=1&_sop=13`;
 }
-// Is the offered/asking price a good sale vs the card's market value?
-function saleVerdict(market: number | null, price: string): { label: string; color: string } | null {
-  const p = Number(price);
-  if (market == null || !p) return null;
-  const r = p / market;
-  if (r >= 1.0) return { label: "Good sale", color: C.green };
-  if (r >= 0.9) return { label: "Fair", color: C.amber };
-  return { label: "Below market", color: C.red };
+function nameOfKey(k: CardKey): string {
+  return `${k.set ?? ""}${k.number ? ` #${k.number}` : ""}${k.variant ? ` ${k.variant}` : ""} ${k.grader ?? ""} ${k.grade ?? ""}`.replace(/\s+/g, " ").trim();
 }
 
-// Trade/sale evaluator: pile up the cards in a deal (type or snap), set each to the
-// price you're offered, get a per-line read + a running total. Built for the table.
+const tv = StyleSheet.create({
+  seg: { flexDirection: "row", backgroundColor: C.panel2, borderRadius: 9, padding: 3, borderWidth: 1, borderColor: C.line, marginBottom: 4 },
+  segBtn: { flex: 1, paddingVertical: 7, borderRadius: 7, alignItems: "center" },
+  segOn: { backgroundColor: C.panel, borderWidth: 1, borderColor: C.line },
+  segText: { color: C.muted, fontSize: 13, fontWeight: "600" },
+  segTextOn: { color: C.ink },
+  reviewBanner: { color: C.amber, fontSize: 12, marginTop: 12, lineHeight: 17 },
+  reviewCard: { borderColor: C.amber, borderWidth: 1.5 },
+  crop: { width: 34, height: 34, borderRadius: 6, backgroundColor: C.panel2 },
+  nameInput: { color: C.ink, fontSize: 14, fontWeight: "600", paddingVertical: 2 },
+  summary: { marginTop: 14, padding: 12, borderRadius: 10, backgroundColor: C.panel, borderWidth: 1, borderColor: C.line },
+  verdict: { fontSize: 15, fontWeight: "700", marginTop: 10, textAlign: "center" },
+});
+
+// Two-sided trade evaluator. Snap (or type) the cards on each side — Selling (what
+// you give up) and Buying (what you'd get) — we value each on the grounded recent-
+// sales path and tell you if the trade favours you. Anything the scanner isn't sure
+// about lands on an amber row asking you to confirm what the card is.
 function QuickValueScreen({ canScan }: { canScan: boolean }) {
+  const [side, setSide] = useState<"selling" | "buying">("selling");
+  const [selling, setSelling] = useState<TradeLine[]>([]);
+  const [buying, setBuying] = useState<TradeLine[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pile, setPile] = useState<TradeLine[]>([]);
 
-  // Market value = median of ACTUAL recent sales (graded only); raw → no value, eBay link.
+  const lines = side === "selling" ? selling : buying;
+  const setLines = side === "selling" ? setSelling : setBuying;
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+
+  // Market value = median of ACTUAL recent sales (graded only); raw → no value.
   const valueOf = async (q: string): Promise<number | null> => {
     const graded = /\b(PSA|CGC|SGC|BGS)\b/i.test(q) && /\b(10|9\.5|9|8\.5|8|7|6|5)\b/.test(q) && !/\b(raw|ungraded)\b/i.test(q);
     if (!graded || !API_BASE) return null;
@@ -880,7 +897,7 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
     setText("");
     setBusy(true);
     const market = await valueOf(q);
-    setPile((p) => [...p, { id: `m-${Date.now()}-${p.length}`, name: q, market, price: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q) }]);
+    setLines((p) => [...p, { id: `m-${Date.now()}-${p.length}`, name: q, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: market == null, valuedFor: q }]);
     setBusy(false);
   };
 
@@ -893,13 +910,25 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
       const r = await fetch(`${API_BASE}/api/v1/library/scan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: { base64: img.base64, mediaType: img.mediaType } }) });
       if (r.ok) {
         const s = (await r.json()) as Scan;
-        const lines: TradeLine[] = (s.valued ?? []).map((v, i) => {
-          const k = v.holding.key;
-          const name = `${k.set}${k.number ? ` #${k.number}` : ""}${k.variant ? ` ${k.variant}` : ""} ${k.grader} ${k.grade}`.trim();
-          const m = v.fairValue?.point != null ? Math.round(v.fairValue.point) : null;
-          return { id: `s-${Date.now()}-${i}`, name, market: m, price: m != null ? String(m) : "", ebay: ebaySoldSearch(name) };
-        });
-        setPile((p) => [...p, ...lines]);
+        // Confident reads → value each on the same grounded path as a type-in.
+        const confident = await Promise.all(
+          (s.valued ?? []).map(async (v, i): Promise<TradeLine> => {
+            const name = nameOfKey(v.holding.key);
+            const market = await valueOf(name);
+            return { id: `s-${Date.now()}-${i}`, name, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(name), needsReview: market == null, valuedFor: name };
+          }),
+        );
+        // Uncertain reads → ask the user to confirm what the card is.
+        const unsure: TradeLine[] = (s.review ?? []).map((rv, i) => ({
+          id: `r-${Date.now()}-${i}`,
+          name: "",
+          market: null,
+          value: "",
+          ebay: "",
+          needsReview: true,
+          cropUrl: rv.detection.cropUrl,
+        }));
+        setLines((p) => [...p, ...confident, ...unsure]);
       }
     } catch {
       /* scan unavailable */
@@ -907,68 +936,128 @@ function QuickValueScreen({ canScan }: { canScan: boolean }) {
     setBusy(false);
   };
 
-  const setPrice = (id: string, v: string) => setPile((p) => p.map((li) => (li.id === id ? { ...li, price: v.replace(/[^0-9.]/g, "") } : li)));
-  const removeLine = (id: string) => setPile((p) => p.filter((li) => li.id !== id));
+  // Re-identify a line after its name is edited — turns an amber "needs confirming"
+  // row into a valued one, and re-prices any correction.
+  const reValue = async (id: string) => {
+    const li0 = linesRef.current.find((x) => x.id === id);
+    const q = (li0?.name ?? "").trim();
+    if (!q || li0?.valuedFor === q) return; // unchanged → don't re-look-up / clobber a manual value
+    const market = await valueOf(q);
+    setLines((p) => p.map((li) => (li.id === id ? { ...li, market, value: market != null ? String(Math.round(market)) : "", ebay: ebaySoldSearch(q), needsReview: market == null, valuedFor: q } : li)));
+  };
+  const setName = (id: string, v: string) => setLines((p) => p.map((li) => (li.id === id ? { ...li, name: v } : li)));
+  const setValue = (id: string, v: string) => setLines((p) => p.map((li) => (li.id === id ? { ...li, value: v.replace(/[^0-9.]/g, "") } : li)));
+  const removeLine = (id: string) => setLines((p) => p.filter((li) => li.id !== id));
 
-  const totalMarket = pile.reduce((s, li) => s + (li.market ?? 0), 0);
-  const totalPrice = pile.reduce((s, li) => s + (Number(li.price) || 0), 0);
+  const total = (arr: TradeLine[]) => arr.reduce((s, li) => s + (Number(li.value) || li.market || 0), 0);
+  const sellTotal = total(selling);
+  const buyTotal = total(buying);
+  const net = buyTotal - sellTotal; // you GET buying, GIVE selling
+  const both = selling.length > 0 && buying.length > 0;
+  const verdict = both
+    ? net > 1
+      ? { label: `Good trade — you gain $${money(net)}`, color: C.green }
+      : net < -1
+        ? { label: `You'd give up $${money(-net)} more than you get`, color: C.red }
+        : { label: "Even trade", color: C.amber }
+    : null;
+  const reviewCount = lines.filter((li) => li.needsReview).length;
 
   return (
     <View>
-      <Text style={styles.colH}>Value &amp; trade</Text>
-      <Text style={styles.qvHint}>Add the cards in the deal (type or snap), set each to the price you're offered, and see if it's a good sale. Graded gets a value; raw shows the eBay-sold link.</Text>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <TextInput value={text} onChangeText={setText} onSubmitEditing={addManual} returnKeyType="done" autoCapitalize="none" placeholder="e.g. 2018 Prizm Luka Silver PSA 10" placeholderTextColor={C.muted} style={[styles.input, { flex: 1 }]} />
+      <Text style={styles.colH}>Trade evaluator</Text>
+      <Text style={styles.qvHint}>Snap the cards on each side — Selling (what you give up) and Buying (what you'd get). We value each and tell you if the trade's fair. Anything we're unsure of, we ask you to confirm.</Text>
+
+      <View style={tv.seg}>
+        <Pressable style={[tv.segBtn, side === "selling" && tv.segOn]} onPress={() => setSide("selling")}>
+          <Text style={[tv.segText, side === "selling" && tv.segTextOn]}>Selling · {selling.length}</Text>
+        </Pressable>
+        <Pressable style={[tv.segBtn, side === "buying" && tv.segOn]} onPress={() => setSide("buying")}>
+          <Text style={[tv.segText, side === "buying" && tv.segTextOn]}>Buying · {buying.length}</Text>
+        </Pressable>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+        <TextInput value={text} onChangeText={setText} onSubmitEditing={addManual} returnKeyType="done" autoCapitalize="none" placeholder="type a card, or snap →" placeholderTextColor={C.muted} style={[styles.input, { flex: 1 }]} />
         <Pressable style={styles.addBtn} onPress={addManual}>
           <Text style={styles.addBtnText}>Add</Text>
         </Pressable>
       </View>
       {canScan ? (
-        <Pressable style={[styles.scanBtnAlt, { marginTop: 8 }]} onPress={snap}>
-          <Text style={styles.scanBtnAltText}>or snap a photo to add cards</Text>
+        <Pressable style={[styles.scanBtnAlt, { marginTop: 8, flexDirection: "row", justifyContent: "center", gap: 6 }]} onPress={snap}>
+          <Ionicons name="camera-outline" size={16} color={C.accent} />
+          <Text style={styles.scanBtnAltText}>Snap cards you're {side}</Text>
         </Pressable>
       ) : null}
       {busy ? <ActivityIndicator color={C.accent} style={{ marginTop: 12 }} /> : null}
 
-      {pile.length === 0 ? (
-        <Text style={[styles.hint, { marginTop: 14 }]}>Add the cards in the deal — each line gets a value you can edit and a read on whether the price is fair.</Text>
+      {reviewCount > 0 ? (
+        <Text style={tv.reviewBanner}>
+          ⚠ {reviewCount} card{reviewCount > 1 ? "s" : ""} need confirming — type the name on the amber row{reviewCount > 1 ? "s" : ""} so we can value {reviewCount > 1 ? "them" : "it"}.
+        </Text>
+      ) : null}
+
+      {lines.length === 0 ? (
+        <Text style={[styles.hint, { marginTop: 14 }]}>Nothing on the {side} side yet. Snap a photo or type a card above.</Text>
       ) : (
-        <>
-          {pile.map((li) => {
-            const v = saleVerdict(li.market, li.price);
-            return (
-              <View key={li.id} style={[styles.itemCard, { flexDirection: "column", alignItems: "stretch" }]}>
-                <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-                  <Text style={[styles.cardTitle, { flex: 1 }]} numberOfLines={2}>{li.name}</Text>
-                  <Pressable onPress={() => removeLine(li.id)} hitSlop={10} accessibilityLabel="Remove">
-                    <Ionicons name="close-circle" size={19} color={C.muted} />
-                  </Pressable>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 7 }}>
-                  <Text style={styles.cardSub}>{li.market != null ? `market $${money(li.market)}` : "no value"}</Text>
-                  <Text style={styles.tradePriceLbl}>offer $</Text>
-                  <TextInput value={li.price} onChangeText={(t) => setPrice(li.id, t)} keyboardType="numeric" placeholder="0" placeholderTextColor={C.muted} style={styles.tradePriceInput} />
-                  {v ? (
-                    <View style={[styles.dealChip, { borderColor: v.color + "66" }]}>
-                      <Text style={[styles.dealChipText, { color: v.color }]}>{v.label}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Pressable onPress={() => openExternal(li.ebay)} style={{ marginTop: 6 }}>
-                  <Text style={{ color: C.accent, fontSize: 12 }}>See sold on eBay →</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-          <View style={styles.tradeTotal}>
-            <Text style={styles.tradeTotalLbl}>{pile.length} cards · market ${money(totalMarket)}</Text>
-            <Text style={styles.tradeTotalVal}>offer total ${money(totalPrice)}</Text>
+        lines.map((li) => (
+          <View key={li.id} style={[styles.itemCard, { flexDirection: "column", alignItems: "stretch" }, li.needsReview ? tv.reviewCard : null]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {li.cropUrl ? <Image source={{ uri: li.cropUrl }} style={tv.crop} /> : null}
+              <TextInput
+                value={li.name}
+                onChangeText={(t) => setName(li.id, t)}
+                onSubmitEditing={() => reValue(li.id)}
+                onBlur={() => reValue(li.id)}
+                autoCapitalize="words"
+                placeholder={li.needsReview ? "What card is this? e.g. 2018 Prizm Luka Silver PSA 10" : "card name"}
+                placeholderTextColor={C.muted}
+                style={[tv.nameInput, { flex: 1 }]}
+              />
+              <Pressable onPress={() => removeLine(li.id)} hitSlop={10} accessibilityLabel="Remove">
+                <Ionicons name="close-circle" size={19} color={C.muted} />
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 7 }}>
+              <Text style={styles.cardSub}>{li.market != null ? `market $${money(li.market)}` : li.needsReview ? "needs confirming" : "no value"}</Text>
+              <Text style={styles.tradePriceLbl}>value $</Text>
+              <TextInput value={li.value} onChangeText={(t) => setValue(li.id, t)} keyboardType="numeric" placeholder="0" placeholderTextColor={C.muted} style={styles.tradePriceInput} />
+            </View>
+            {li.name.trim() ? (
+              <Pressable onPress={() => openExternal(li.ebay || ebaySoldSearch(li.name))} style={{ marginTop: 6 }}>
+                <Text style={{ color: C.accent, fontSize: 12 }}>See sold on eBay →</Text>
+              </Pressable>
+            ) : null}
           </View>
-          <Pressable onPress={() => setPile([])} style={{ alignSelf: "center", marginTop: 8 }}>
+        ))
+      )}
+
+      {selling.length > 0 || buying.length > 0 ? (
+        <View style={tv.summary}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={styles.tradeTotalLbl}>Selling (you give)</Text>
+            <Text style={styles.tradeTotalVal}>${money(sellTotal)}</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+            <Text style={styles.tradeTotalLbl}>Buying (you get)</Text>
+            <Text style={styles.tradeTotalVal}>${money(buyTotal)}</Text>
+          </View>
+          {verdict ? (
+            <Text style={[tv.verdict, { color: verdict.color }]}>{verdict.label}</Text>
+          ) : (
+            <Text style={[styles.cardSub, { marginTop: 8, textAlign: "center" }]}>Add cards to the other side to compare the trade.</Text>
+          )}
+          <Pressable
+            onPress={() => {
+              setSelling([]);
+              setBuying([]);
+            }}
+            style={{ alignSelf: "center", marginTop: 10 }}
+          >
             <Text style={{ color: C.muted, fontSize: 12 }}>Clear all</Text>
           </Pressable>
-        </>
-      )}
+        </View>
+      ) : null}
     </View>
   );
 }
