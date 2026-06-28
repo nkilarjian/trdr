@@ -18,14 +18,15 @@ export interface RealVisionConfig {
 
 const PROMPT = [
   "This is a photo of one or more GRADED trading-card slabs (PSA, CGC, SGC, or BGS).",
-  "For every slab you can see, READ ITS PRINTED LABEL and return:",
+  "Read each slab's PRINTED LABEL carefully and transcribe EXACTLY what is printed. Do NOT infer, autocomplete, or correct from memory. If any character is covered by glare or too blurry to read, OMIT that field and lower your confidence rather than guessing.",
+  "For every slab you can see, return:",
   '- grader: one of "PSA" | "CGC" | "SGC" | "BGS"',
   "- cert: the printed certification / serial number (digits), or omit if unreadable",
   '- set: the descriptive line as printed — year, brand/set and player/subject, e.g. "2018 Panini Prizm Luka Doncic" (omit if unreadable)',
   '- number: the card number, e.g. "280" (digits/letters as printed; omit the # sign)',
-  '- variant: any parallel/insert/variety printed, e.g. "Silver", "Refractor" (omit if none)',
+  '- variant: the parallel/insert/variety ONLY if it is actually printed on the label, e.g. "Silver", "Refractor". A plain base card has NO variant — leave it out rather than assuming one.',
   "- grade: the numeric grade as a number, e.g. 10, 9.5 (omit if unreadable)",
-  "- confidence: 0..1, how sure you are of the overall read",
+  "- confidence: 0..1 — your honest certainty of the WHOLE read; use a low value if any field was hard to make out",
   "- boundingBox: {x,y,w,h} as fractions 0..1 of the image",
   'Respond with ONLY a JSON array, e.g. [{"grader":"PSA","cert":"58127634","set":"2018 Panini Prizm Luka Doncic","number":"280","variant":"Silver","grade":10,"confidence":0.95,"boundingBox":{"x":0.1,"y":0.1,"w":0.2,"h":0.3}}].',
   "Include glare/blurred slabs too, with low confidence and whatever fields you can read. No prose, JSON only.",
@@ -64,11 +65,18 @@ export class RealVisionProvider implements VisionProvider {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        // Reading a printed slab label is OCR-grade work — Haiku is fast + cheap
-        // and plenty accurate. Pinned dated ID (aliases aren't always accepted);
-        // override with VISION_MODEL for tougher photos.
-        model: this.config.model ?? "claude-haiku-4-5-20251001",
-        max_tokens: 2048,
+        // Identifying a card off a photo is error-prone OCR + reasoning, so default
+        // to the most capable VISION model with adaptive thinking ON — it reasons
+        // about ambiguous/glared labels before answering instead of one-shotting,
+        // which cuts misidentifications. Slower + pricier than Haiku; override with
+        // VISION_MODEL (e.g. claude-haiku-4-5-20251001) when speed matters more.
+        model: this.config.model ?? "claude-opus-4-8",
+        max_tokens: 8192,
+        // Adaptive thinking (Opus 4.8): the model decides how much to reason; do
+        // NOT use budget_tokens here (rejected with 400 on 4.8). effort "high"
+        // trades latency for accuracy — the point of this mode.
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
         messages: [
           {
             role: "user",
