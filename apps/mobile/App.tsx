@@ -160,7 +160,7 @@ function ebaySoldUrl(name: string, grader: string, grade: number, sampleTitle?: 
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"alerts" | "library" | "wishlist" | "scan" | "passport">("alerts");
+  const [tab, setTab] = useState<"alerts" | "value" | "library" | "wishlist" | "scan" | "passport">("alerts");
   const [source, setSource] = useState<"snapshot" | "live">("snapshot");
   // What the backend can actually do (real creds vs mocks) — drives honest
   // labelling and hides features that aren't really wired (e.g. photo-scan).
@@ -410,6 +410,7 @@ export default function App() {
 
   const tabs: { key: typeof tab; label: string; icon: IconName }[] = [
     { key: "alerts", label: `Deals · ${alerts.length}`, icon: "pricetags-outline" },
+    { key: "value", label: "Value", icon: "search-outline" },
     { key: "library", label: `Library · ${holdings.length}`, icon: "albums-outline" },
     { key: "wishlist", label: `Wishlist · ${hits.length}`, icon: "heart-outline" },
     { key: "scan", label: "Scan", icon: "scan-outline" },
@@ -434,6 +435,7 @@ export default function App() {
   const body = (
     <View style={{ width: "100%", maxWidth, alignSelf: "center" }}>
       {tab === "alerts" && <AlertsFeed alerts={alerts} speculative={speculative} watching={watching} columns={columns} pro={pro} onOpenCard={setDetail} loading={!boardLoaded} />}
+      {tab === "value" && <QuickValueScreen onAddHolding={addHolding} />}
       {tab === "library" && (
         <LibraryScreen
           holdings={holdings}
@@ -828,6 +830,94 @@ function DealRow({ a, onOpenCard }: { a: Alert; onOpenCard: (c: DetailCard) => v
         </View>
       </View>
     </Pressable>
+  );
+}
+
+// On-the-spot card valuation: type any card (graded OR raw) → our value band +
+// recent sales for graded, and always a one-tap link to real eBay sold prices
+// (the reliable universal path — works for raw too). Built for deciding fast.
+function QuickValueScreen({ onAddHolding }: { onAddHolding: (text: string) => void }) {
+  const [text, setText] = useState("");
+  const [res, setRes] = useState<null | {
+    name: string;
+    raw: boolean;
+    ebay: string;
+    loading: boolean;
+    fairValue?: { point: number; lower: number; upper: number; confidence: number; compCount: number };
+    comps?: { price: number; soldAt: string; title?: string; saleType?: string }[];
+  }>(null);
+
+  const lookup = async () => {
+    const q = text.trim();
+    if (!q) return;
+    const graded = /\b(PSA|CGC|SGC|BGS)\b/i.test(q) && /\b(10|9\.5|9|8\.5|8|7|6|5)\b/.test(q) && !/\b(raw|ungraded)\b/i.test(q);
+    const clean = q.replace(/\b(raw|ungraded)\b/gi, "").replace(/#/g, "").replace(/\s+/g, " ").trim();
+    const ebay = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(clean)}&LH_Sold=1&LH_Complete=1&_sop=13`;
+    setRes({ name: q, raw: !graded, ebay, loading: graded && !!API_BASE });
+    if (graded && API_BASE) {
+      try {
+        const key = parseHolding(q, "qv").key;
+        const r = await fetch(`${API_BASE}/api/v1/card/detail`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+        const d = r.ok ? await r.json() : {};
+        setRes((p) => (p ? { ...p, loading: false, fairValue: d.fairValue, comps: d.comps } : p));
+      } catch {
+        setRes((p) => (p ? { ...p, loading: false } : p));
+      }
+    }
+  };
+
+  return (
+    <View>
+      <Text style={styles.colH}>Value a card</Text>
+      <Text style={styles.qvHint}>Type any card — graded or raw. e.g. “2018 Prizm Luka Silver PSA 10” or “Jordan Fleer rookie raw”.</Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <TextInput value={text} onChangeText={setText} onSubmitEditing={lookup} returnKeyType="search" autoCapitalize="none" placeholder="card name…" placeholderTextColor={C.muted} style={[styles.input, { flex: 1 }]} />
+        <Pressable style={styles.addBtn} onPress={lookup}>
+          <Text style={styles.addBtnText}>Value</Text>
+        </Pressable>
+      </View>
+
+      {res ? (
+        <View style={[styles.itemCard, { flexDirection: "column", alignItems: "stretch", marginTop: 12 }]}>
+          <Text style={styles.cardTitle} numberOfLines={2}>{res.name}</Text>
+          {res.loading ? (
+            <View style={{ paddingVertical: 16, alignItems: "center" }}>
+              <ActivityIndicator color={C.accent} />
+            </View>
+          ) : res.comps && res.comps.length > 0 ? (
+            (() => {
+              // Ground the headline in ACTUAL recent sales (median), not the model's
+              // prior-shrunk point — for a price decision you want what it's selling for.
+              const prices = res.comps.map((c) => c.price).filter((p) => p > 0).sort((a, b) => a - b);
+              const median = prices[Math.floor((prices.length - 1) / 2)];
+              return (
+                <>
+                  <Text style={[styles.cardPrice, { marginTop: 8, fontSize: 22 }]}>${money(median)}</Text>
+                  <Text style={styles.cardSub}>
+                    typical recent sale · {res.comps.length} sales · ${money(prices[0])}–${money(prices[prices.length - 1])} · last ${money(res.comps[0].price)}
+                  </Text>
+                  {res.comps.slice(0, 5).map((c, i) => (
+                    <Text key={i} style={styles.qvComp}>
+                      {c.soldAt.slice(0, 10)} · {c.saleType === "auction-close" ? "auction" : "BIN"} · ${money(c.price)}
+                    </Text>
+                  ))}
+                </>
+              );
+            })()
+          ) : (
+            <Text style={[styles.cardSub, { marginTop: 8 }]}>
+              {res.raw ? "Raw / ungraded — tap below for real sold prices on eBay." : "No sold-price data for that exact card — check eBay below."}
+            </Text>
+          )}
+          <Pressable style={[cd.cta, { marginTop: 12 }]} onPress={() => openExternal(res.ebay)}>
+            <Text style={cd.ctaText}>See sold prices on eBay →</Text>
+          </Pressable>
+          <Pressable style={{ marginTop: 10, alignItems: "center" }} onPress={() => onAddHolding(res.name)} accessibilityLabel="Add to library">
+            <Text style={{ color: C.accent, fontSize: 13, fontWeight: "500" }}>+ Add to my library</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1845,6 +1935,8 @@ const styles = StyleSheet.create({
   dealPriceLine: { color: C.ink, fontSize: 12, marginTop: 3 },
   dealIdentity: { color: C.muted, fontSize: 11, marginTop: 3, lineHeight: 15 },
   specNote: { color: C.muted, fontSize: 11, marginBottom: 8, marginTop: -4 },
+  qvHint: { color: C.muted, fontSize: 12, lineHeight: 17, marginBottom: 10 },
+  qvComp: { color: C.muted, fontSize: 11, fontFamily: MONO, marginTop: 3 },
   clearBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   clearBtnText: { color: C.red, fontSize: 12, fontWeight: "600" },
   emptyBox: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 14 },
