@@ -1792,13 +1792,25 @@ function LibraryScreen({
   const [scan, setScan] = useState<Scan>(bundledScan);
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
   const [manual, setManual] = useState("");
+  const [addMsg, setAddMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!addMsg) return;
+    const t = setTimeout(() => setAddMsg(null), 6000);
+    return () => clearTimeout(t);
+  }, [addMsg]);
   const total = holdings.reduce((s, v) => s + (v.fairValue?.point ?? 0), 0);
   const hasPL = holdings.some((v) => v.unrealizedPL != null);
   const totalPL = holdings.reduce((s, v) => s + (v.unrealizedPL ?? 0), 0);
   const isWeb = Platform.OS === "web";
   const submitManual = () => {
-    onAddHolding(manual);
+    const q = manual.trim();
+    if (!q) {
+      setAddMsg("Type a card first — e.g. “2018 Prizm Luka #280 PSA 10”.");
+      return;
+    }
+    onAddHolding(q);
     setManual("");
+    setAddMsg(`✓ Added “${q}” — it’s in your library below; its value loads in a moment.`);
   };
 
   const runScan = async (img?: PickedImage) => {
@@ -1863,6 +1875,7 @@ function LibraryScreen({
           <Text style={styles.addBtnText}>Add</Text>
         </Pressable>
       </View>
+      {addMsg ? <Text style={[styles.qvHint, { color: addMsg.startsWith("✓") ? C.green : C.muted, marginBottom: 8 }]}>{addMsg}</Text> : null}
 
       {canScan ? (
         <Pressable style={styles.scanBtnAlt} onPress={isWeb ? upload : () => runScan(undefined)}>
