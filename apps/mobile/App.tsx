@@ -1745,13 +1745,15 @@ function pickImageWeb(): Promise<PickedImage | undefined> {
           const img = new g.Image();
           img.onload = () => {
             try {
-              const MAX = 1600;
+              // Opus 4.7+ supports high-res vision (up to ~2576px long edge); keep more
+              // pixels so small card/label text stays legible. Higher quality too.
+              const MAX = 2400;
               let w = img.width, h = img.height;
               if (Math.max(w, h) > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
               const canvas = g.document.createElement("canvas");
               canvas.width = w; canvas.height = h;
               canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-              fromDataUrl(canvas.toDataURL("image/jpeg", 0.85));
+              fromDataUrl(canvas.toDataURL("image/jpeg", 0.92));
             } catch { fromDataUrl(src); }
           };
           img.onerror = () => fromDataUrl(src);
