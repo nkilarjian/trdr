@@ -67,3 +67,4 @@ export interface VisionProvider {
 
 export { MockVisionProvider } from "./mock.js";
 export { RealVisionProvider } from "./real.js";
+export { identifyWithCardSight } from "./cardsight.js";

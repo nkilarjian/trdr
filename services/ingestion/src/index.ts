@@ -12,6 +12,7 @@ export * from "./board.js";
 export * from "./watchlist-store.js";
 export * from "./library.js";
 export * from "./accumulate.js";
+export { identifyWithCardSight } from "@trdr/vision"; // real card recognition for the API's /identify
 
 export interface WatchedKey {
   key: CanonicalCardKey;

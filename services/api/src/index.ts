@@ -10,6 +10,7 @@ import { DefaultIdentityResolver } from "@trdr/identity";
 import {
   buildFeed,
   bulkIngest,
+  identifyWithCardSight,
   DEMO_FEED_PARAMS,
   DEMO_LIBRARY,
   DEMO_LIBRARY_NOW,
@@ -62,7 +63,7 @@ const capabilities = {
   vision: process.env.VISION_BACKEND === "claude" && process.env.ANTHROPIC_API_KEY ? "claude" : "mock",
   grading: process.env.PSA_API_TOKEN || process.env.CGC_API_TOKEN || process.env.SGC_API_TOKEN || process.env.BGS_API_TOKEN ? "real" : "mock",
 };
-app.get("/health", async () => ({ ok: true, build: "user-sync", providers: capabilities, sync: syncConfigured() }));
+app.get("/health", async () => ({ ok: true, build: "cardsight", providers: capabilities, sync: syncConfigured(), cardsight: !!process.env.CARDSIGHT_API_KEY }));
 
 // ── cross-device sync: the signed-in user's library + wishlist, in Postgres ──
 // Requires a valid Clerk session token (Authorization: Bearer …) and DATABASE_URL.
@@ -188,8 +189,11 @@ app.post<{ Body: { image?: { uri?: string; base64?: string; mediaType?: string }
   const image = req.body?.image;
   if (!image?.base64) return reply.code(400).send({ error: "image base64 required" });
   try {
-    const cards = await providers.vision.identifyCards(image);
-    return { cards };
+    // Real card recognition (CardSight) when configured; the general-vision read
+    // is the fallback. Same IdentifiedCard shape either way, so the client is unchanged.
+    const cardsightKey = process.env.CARDSIGHT_API_KEY;
+    const cards = cardsightKey ? await identifyWithCardSight(image, cardsightKey) : await providers.vision.identifyCards(image);
+    return { cards, engine: cardsightKey ? "cardsight" : "vision" };
   } catch (e) {
     req.log.error(e);
     return reply.code(502).send({ error: e instanceof Error ? e.message : "vision failed" });
