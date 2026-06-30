@@ -357,6 +357,19 @@ export default function App() {
       return next;
     });
   };
+  // Batch add (photo scan): one state update + ONE revalue, so concurrent
+  // revalues can't race and drop cards.
+  const addHoldings = (texts: string[]) => {
+    const clean = texts.map((t) => t.trim()).filter(Boolean);
+    if (!clean.length) return;
+    setHoldings((prev) => {
+      const stamp = Date.now();
+      const next = [...prev, ...clean.map((t, i) => ({ holding: parseHolding(t, `h-${stamp}-${i}-${Math.random().toString(36).slice(2, 6)}`) }))];
+      persistLib(next);
+      revalueLibrary(next);
+      return next;
+    });
+  };
   const removeHolding = (id: string) =>
     setHoldings((prev) => {
       const next = prev.filter((v) => v.holding.id !== id);
@@ -443,6 +456,7 @@ export default function App() {
           scan={FALLBACK.scan}
           onAddScanned={addScanned}
           onAddHolding={addHolding}
+          onAddMany={addHoldings}
           onOpenCard={setDetail}
           onRemove={removeHolding}
           columns={columns}
@@ -1772,6 +1786,7 @@ function LibraryScreen({
   scan: bundledScan,
   onAddScanned,
   onAddHolding,
+  onAddMany,
   onOpenCard,
   onRemove,
   columns,
@@ -1782,6 +1797,7 @@ function LibraryScreen({
   scan: Scan;
   onAddScanned: (v: ValuedHolding[]) => void;
   onAddHolding: (text: string) => void;
+  onAddMany: (texts: string[]) => void;
   onOpenCard: (c: DetailCard) => void;
   onRemove: (id: string) => void;
   columns: number;
@@ -1813,6 +1829,38 @@ function LibraryScreen({
     setAddMsg(`✓ Added “${q}” — it’s in your library below; its value loads in a moment.`);
   };
 
+  // Photo → CardSight recognition → add the GRADED cards to the library. (The
+  // library stores graded cards; raw cards from a photo belong in the Trade tab,
+  // which values them via eBay-sold — the library can't hold them without a grade.)
+  const uploadAndAdd = async () => {
+    if (!API_BASE) return;
+    const img = await pickImageWeb();
+    if (!img) return;
+    setAddMsg("Reading your photo…");
+    try {
+      const r = await fetch(`${API_BASE}/api/v1/identify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: { base64: img.base64, mediaType: img.mediaType } }) });
+      if (!r.ok) {
+        setAddMsg("Couldn't read that photo — try again, or add by hand.");
+        return;
+      }
+      const { cards } = (await r.json()) as { cards?: { name?: string; graded?: boolean; confidence?: number }[] };
+      const list = cards ?? [];
+      const graded = list.filter((c) => c.name && c.graded && (c.confidence ?? 0) >= 0.6).map((c) => c.name as string);
+      const other = list.length - graded.length;
+      if (graded.length) {
+        onAddMany(graded);
+        const tail = other ? ` (${other} raw/unclear not added — use the Trade tab for raw cards)` : "";
+        setAddMsg(`✓ Added ${graded.length} card${graded.length > 1 ? "s" : ""} from the photo${tail}.`);
+      } else if (other) {
+        setAddMsg("Those look like raw cards — the library holds graded cards. Use the Trade tab to value raw cards.");
+      } else {
+        setAddMsg("No cards I could read in that photo — try a clearer shot, or add by hand.");
+      }
+    } catch {
+      setAddMsg("Couldn't reach the scanner — try again, or add by hand.");
+    }
+  };
+
   const runScan = async (img?: PickedImage) => {
     setPhotoUri(img?.previewUri);
     if (API_BASE) {
@@ -1828,11 +1876,6 @@ function LibraryScreen({
       }
     }
     setScanning(true);
-  };
-
-  const upload = async () => {
-    const img = await pickImageWeb();
-    if (img) runScan(img);
   };
 
   // canScan comes from the backend's capability report — only true when a real
@@ -1878,8 +1921,8 @@ function LibraryScreen({
       {addMsg ? <Text style={[styles.qvHint, { color: addMsg.startsWith("✓") ? C.green : C.muted, marginBottom: 8 }]}>{addMsg}</Text> : null}
 
       {canScan ? (
-        <Pressable style={styles.scanBtnAlt} onPress={isWeb ? upload : () => runScan(undefined)}>
-          <Text style={styles.scanBtnAltText}>{isWeb ? "or upload a photo to read many at once" : "or take a photo to read many at once"}</Text>
+        <Pressable style={styles.scanBtnAlt} onPress={isWeb ? uploadAndAdd : () => runScan(undefined)}>
+          <Text style={styles.scanBtnAltText}>{isWeb ? "or upload a photo to add graded cards" : "or take a photo to read many at once"}</Text>
         </Pressable>
       ) : (
         <Text style={styles.hint}>Tip: photo scanning turns on once the scanner's connected — for now, add cards by hand.</Text>
